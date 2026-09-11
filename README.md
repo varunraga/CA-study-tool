@@ -36,6 +36,12 @@ Upload the four files to any static host, keeping them in the same folder togeth
 
 Once hosted over HTTPS, visiting the URL will offer "Add to Home Screen" / "Install" on Android, iOS, and desktop Chrome/Edge.
 
+### Updating after you've deployed once
+
+The service worker (`sw.js`) now uses a **network-first** strategy and self-updates: whenever you redeploy new files, the installed PWA fetches the latest version and reloads itself automatically the next time you open it (it used to serve a stale cached copy until you happened to open the site in a regular browser tab first — that's fixed). Two things to know:
+- Your saved notes/data live in IndexedDB, completely separate from this caching — updating the app files never touches your data.
+- `sw.js` has a `CACHE_NAME` version string (`castudy-cache-v2`) — bump it (e.g. `-v3`) each time you redeploy, so old cached files are cleanly discarded rather than lingering.
+
 ## Design
 
 The interface was given a full visual identity pass: "Working Ledger" — grounded in actual accounting practice (ledger paper, ink, brass seals, dotted leader-lines) rather than a generic SaaS look. Pale sage ledger-paper background with a subtle ruled-paper texture, deep ink-green text, a brass/gold primary accent (seals, stamps, primary buttons), and red-ink for alerts/danger. Headings use IBM Plex Serif (an official, certificate-like feel); UI text uses IBM Plex Sans; **every number, date, and figure uses IBM Plex Mono** — a deliberate choice, since accountants align figures in columns. The sidebar reads like a ledger's tab index (brass spine strip, tab-style active states); the Dashboard opens with a "Today's Entry" journal spread — the one bold, memorable design move — instead of generic stat cards. Both light ("day ledger") and dark ("night ledger") themes are fully covered.

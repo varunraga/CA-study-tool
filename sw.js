@@ -1,7 +1,12 @@
-// CA Study — service worker. Caches the app shell so it works offline
-// once opened at least once. All actual data lives in IndexedDB, which
-// is untouched by this worker.
-const CACHE_NAME = 'castudy-cache-v1';
+// CA Study — service worker. Caches the app shell so it works offline.
+// All actual data lives in IndexedDB, which this worker never touches —
+// updating/replacing these files never affects your saved notes/data.
+//
+// Strategy: network-first for the app shell. When you're online, you
+// always get the latest index.html/app.js straight away; the cache is
+// only a fallback for when you're offline. Bump CACHE_NAME whenever you
+// deploy a new version so old caches get cleared out automatically.
+const CACHE_NAME = 'castudy-cache-v2';
 const APP_SHELL = [
   './',
   './index.html',
@@ -13,7 +18,7 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)).catch(() => {})
   );
-  self.skipWaiting();
+  self.skipWaiting(); // activate this new version immediately, don't wait for old tabs to close
 });
 
 self.addEventListener('activate', (event) => {
@@ -22,23 +27,20 @@ self.addEventListener('activate', (event) => {
       Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
     )
   );
-  self.clients.claim();
+  self.clients.claim(); // take control of any already-open windows (including the installed PWA) right away
 });
 
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      const fetchPromise = fetch(event.request)
-        .then((response) => {
-          if (response && response.status === 200) {
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-          }
-          return response;
-        })
-        .catch(() => cached);
-      return cached || fetchPromise;
-    })
+    fetch(event.request)
+      .then((response) => {
+        if (response && response.status === 200) {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+        }
+        return response;
+      })
+      .catch(() => caches.match(event.request)) // offline fallback only
   );
 });

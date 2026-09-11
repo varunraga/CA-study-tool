@@ -533,7 +533,7 @@ const Notes = {
     const order = (Cache.notes || []).filter(n => n.topicId === topicId).length;
     const note = {
       id: uid(), title, topicId, chapterId: chapter?.id, subjectId: chapter?.subjectId, order,
-      content: '<p>Start typing…</p>', tags: [], importance: 3, examFrequency: 'medium', status: 'new',
+      content: '<p>Start typing…</p>', tags: [], importance: 3, examFrequency: 'medium', status: 'learning',
       createdAt: nowISO(), revision: { stage: -1, nextDate: null }
     };
     await saveItem('notes', note);
@@ -730,7 +730,7 @@ const Notes = {
     const chapter = topic ? (Cache.chapters || []).find(c => c.id === topic.chapterId) : null;
     const note = await saveItem('notes', {
       id: uid(), title, topicId, chapterId: chapter?.id, subjectId: chapter?.subjectId,
-      content: Notes._pendingImportHtml || '<p></p>', tags: [], importance: 3, examFrequency: 'medium', status: 'new',
+      content: Notes._pendingImportHtml || '<p></p>', tags: [], importance: 3, examFrequency: 'medium', status: 'learning',
       createdAt: nowISO(), revision: { stage: -1, nextDate: null }
     });
     Notes._pendingImportHtml = null;
@@ -795,7 +795,13 @@ const Notes = {
     Modal.open('Edit note details', `
       <label>Importance (1-5)</label><input type="number" id="mImp" min="1" max="5" value="${n.importance}" title="Importance, 1 (low) to 5 (high)">
       <label>Exam frequency</label><select id="mFreq" title="How often this comes up in exams"><option ${n.examFrequency === 'low' ? 'selected' : ''}>low</option><option ${n.examFrequency === 'medium' ? 'selected' : ''}>medium</option><option ${n.examFrequency === 'high' ? 'selected' : ''}>high</option></select>
-      <label>Status</label><select id="mStatus" title="Your current study status for this note"><option ${n.status === 'new' ? 'selected' : ''}>new</option><option ${n.status === 'learning' ? 'selected' : ''}>learning</option><option ${n.status === 'difficult' ? 'selected' : ''}>difficult</option><option ${n.status === 'mastered' ? 'selected' : ''}>mastered</option></select>
+      <label>Status</label><select id="mStatus" title="Your current study status for this note">
+        <option ${n.status === 'learning' ? 'selected' : ''} title="First time studying this">learning</option>
+        <option ${n.status === 'familiar' ? 'selected' : ''} title="Completed it once — needs revision to solidify">familiar</option>
+        <option ${n.status === 'moderate' ? 'selected' : ''} title="Not too hard — needs a little more attention and revision">moderate</option>
+        <option ${n.status === 'difficult' ? 'selected' : ''} title="Needs more practice, more time, more revision">difficult</option>
+        <option ${n.status === 'mastered' ? 'selected' : ''} title="Understood well, practiced enough — just last-minute revision needed">mastered</option>
+      </select>
       <label>Tags (comma separated)</label><input type="text" id="mTags" value="${(n.tags || []).join(', ')}" title="Comma-separated tags">
       <div class="modal-actions"><button class="btn secondary" onclick="Modal.close()" title="Discard and close this dialog">Cancel</button><button class="btn" onclick="Notes.saveMeta('${id}')" title="Save these details">Save</button></div>`);
   },
@@ -1375,7 +1381,7 @@ const Pdfs = {
     const title = prompt('Note title?', pdf ? pdf.title + ' — notes' : 'PDF notes'); if (!title) return;
     const note = await saveItem('notes', {
       id: uid(), title, topicId: '', chapterId: '', subjectId: pdf?.subjectId || '', content: '<p></p>',
-      tags: [], importance: 3, examFrequency: 'medium', status: 'new', createdAt: nowISO(), revision: { stage: -1, nextDate: null }
+      tags: [], importance: 3, examFrequency: 'medium', status: 'learning', createdAt: nowISO(), revision: { stage: -1, nextDate: null }
     });
     pdfSplitNoteId = note.id;
     const panel = document.getElementById('pdfRightPanel'); if (panel) panel.innerHTML = Pdfs.splitNotesHTML();
@@ -2103,7 +2109,19 @@ async function boot() {
   document.getElementById('menuBtn').style.display = window.innerWidth <= 860 ? 'inline-flex' : 'none';
   window.addEventListener('resize', () => { document.getElementById('menuBtn').style.display = window.innerWidth <= 860 ? 'inline-flex' : 'none'; });
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('sw.js').catch(() => { /* fine if not hosted */ });
+    // When a newly-deployed version's service worker takes over (it skips
+    // waiting and claims control automatically — see sw.js), reload once so
+    // the already-open window actually picks up the new HTML/JS instead of
+    // continuing to run the old code with a newer cache sitting unused.
+    let swRefreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (swRefreshing) return;
+      swRefreshing = true;
+      window.location.reload();
+    });
+    navigator.serviceWorker.register('sw.js').then((reg) => {
+      reg.update().catch(() => {}); // proactively check for a newer version right away
+    }).catch(() => { /* fine if not hosted */ });
   }
 }
 boot();
