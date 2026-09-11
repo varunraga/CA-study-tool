@@ -225,12 +225,12 @@ const UI = {
   newQuick() {
     Modal.open('Quick Add', `
       <div style="display:flex;flex-direction:column;gap:8px;">
-        <button class="btn secondary" onclick="Modal.close();Notes.promptNew();">📝 New Note</button>
-        <button class="btn secondary" onclick="Modal.close();UI.nav('pdfs');">📄 Import PDF</button>
-        <button class="btn secondary" onclick="Modal.close();Mnemonics.promptNew();">🧠 Add Mnemonic</button>
-        <button class="btn secondary" onclick="Modal.close();Jargons.promptNew();">🔤 Add Jargon</button>
-        <button class="btn secondary" onclick="Modal.close();Questions.promptNew();">❓ Add Question</button>
-        <button class="btn secondary" onclick="Modal.close();Notes.importFile();">📥 Import file as Note (.txt/.md/.html)</button>
+        <button class="btn secondary" onclick="Modal.close();Notes.promptNew();" title="Create a new note">📝 New Note</button>
+        <button class="btn secondary" onclick="Modal.close();UI.nav('pdfs');" title="Go to the PDF library to upload one">📄 Import PDF</button>
+        <button class="btn secondary" onclick="Modal.close();Mnemonics.promptNew();" title="Create a new memory aid">🧠 Add Mnemonic</button>
+        <button class="btn secondary" onclick="Modal.close();Jargons.promptNew();" title="Add a term, keyword or abbreviation">🔤 Add Jargon</button>
+        <button class="btn secondary" onclick="Modal.close();Questions.promptNew();" title="Add a question to your question bank">❓ Add Question</button>
+        <button class="btn secondary" onclick="Modal.close();Notes.importFile();" title="Turn a text, Markdown or HTML file into a note">📥 Import file as Note (.txt/.md/.html)</button>
       </div>`, true);
   }
 };
@@ -250,9 +250,9 @@ const Modal = {
 const Courses = {
   promptNew() {
     Modal.open('New Course', `
-      <label>Course name</label><input type="text" id="mCourseName" placeholder="e.g. CA Intermediate">
-      <div class="modal-actions"><button class="btn secondary" onclick="Modal.close()">Cancel</button>
-      <button class="btn" onclick="Courses.create()">Create</button></div>`);
+      <label>Course name</label><input type="text" id="mCourseName" placeholder="e.g. CA Intermediate" title="Course name">
+      <div class="modal-actions"><button class="btn secondary" onclick="Modal.close()" title="Discard and close this dialog">Cancel</button>
+      <button class="btn" onclick="Courses.create()" title="Create this course">Create</button></div>`);
     setTimeout(() => document.getElementById('mCourseName')?.focus(), 50);
   },
   async create() {
@@ -382,7 +382,7 @@ const Tree = {
     const open = this.expanded.has(c.id);
     const subjects = (Cache.subjects || []).filter(s => s.courseId === c.id).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     return `<div class="tree-node">
-      <div class="tree-row" onclick="Tree.toggle('${c.id}')">
+      <div class="tree-row" onclick="Tree.toggle('${c.id}')" title="Click to expand or collapse">
         <span class="caret">${open ? '▾' : '▸'}</span><span>📚 ${esc(c.name)}</span>
         <span class="add-mini" onclick="event.stopPropagation();Courses.promptNewSubject('${c.id}')" title="Add a subject to this course">+</span>
         <span class="del-mini" onclick="event.stopPropagation();Courses.deleteCourse('${c.id}')" title="Delete this course">✕</span>
@@ -519,10 +519,10 @@ const Notes = {
   promptNew(topicId) {
     const t = topicId || UI.params.id;
     Modal.open('New Note', `
-      <label>Title</label><input type="text" id="mNoteTitle" placeholder="e.g. Conditions for ITC">
-      <label>Topic</label><select id="mNoteTopic">${topicOptions(t)}</select>
-      <div class="modal-actions"><button class="btn secondary" onclick="Modal.close()">Cancel</button>
-      <button class="btn" onclick="Notes.create()">Create</button></div>`);
+      <label>Title</label><input type="text" id="mNoteTitle" placeholder="e.g. Conditions for ITC" title="Note title">
+      <label>Topic</label><select id="mNoteTopic" title="Which topic this note belongs to">${topicOptions(t)}</select>
+      <div class="modal-actions"><button class="btn secondary" onclick="Modal.close()" title="Discard and close this dialog">Cancel</button>
+      <button class="btn" onclick="Notes.create()" title="Create this note">Create</button></div>`);
     setTimeout(() => document.getElementById('mNoteTitle')?.focus(), 50);
   },
   async create() {
@@ -595,42 +595,42 @@ const Notes = {
         <div class="block">
           <h4>Annotations (${annots.length})</h4>
           ${annots.length ? annots.map(a => `<div class="card" style="padding:8px;margin-bottom:6px;font-size:13px;"><b>${esc(a.type)}</b>: ${esc(a.comment)}
-            <div style="text-align:right;"><button class="btn sm secondary" onclick="Notes.deleteAnnotation('${a.id}','${id}')">✕</button></div></div>`).join('') : `<div class="subtle">None yet — select text to annotate.</div>`}
+            <div style="text-align:right;"><button class="btn sm secondary" onclick="Notes.deleteAnnotation('${a.id}','${id}')" title="Delete this annotation">✕</button></div></div>`).join('') : `<div class="subtle">None yet — select text to annotate.</div>`}
         </div>
         <div class="block">
           <h4>Revision</h4>
           <div class="subtle">Next: ${note.revision?.nextDate ? fmtDate(note.revision.nextDate) : 'Not scheduled'}</div>
           <div class="rate-row" style="margin-top:8px;">
-            <button class="btn sm secondary" onclick="Revision.rate('note','${id}','again');Router.render();">Again</button>
-            <button class="btn sm secondary" onclick="Revision.rate('note','${id}','good');Router.render();">Good</button>
-            <button class="btn sm secondary" onclick="Revision.rate('note','${id}','easy');Router.render();">Easy</button>
+            <button class="btn sm secondary" onclick="Revision.rate('note','${id}','again');Router.render();" title="Forgot it — review again soon">Again</button>
+            <button class="btn sm secondary" onclick="Revision.rate('note','${id}','good');Router.render();" title="Got it — review on the normal schedule">Good</button>
+            <button class="btn sm secondary" onclick="Revision.rate('note','${id}','easy');Router.render();" title="Knew it well — push the next review out further">Easy</button>
           </div>
         </div>
         <div class="block">
           <h4>Linked mnemonics</h4>
           ${linkedMnemonics.length ? linkedMnemonics.map(m => `<div class="subtle">🧠 ${esc(m.title)}</div>`).join('') : `<div class="subtle">None linked.</div>`}
-          <button class="btn sm secondary" style="margin-top:6px;" onclick="Mnemonics.promptNew('${note.topicId}')">+ Add mnemonic</button>
+          <button class="btn sm secondary" style="margin-top:6px;" onclick="Mnemonics.promptNew('${note.topicId}')" title="Create a mnemonic for this topic">+ Add mnemonic</button>
         </div>
         <div class="block">
           <h4>Linked questions</h4>
           ${linkedQuestions.length ? linkedQuestions.map(q => `<div class="subtle">❓ ${esc(q.questionText.slice(0, 40))}…</div>`).join('') : `<div class="subtle">None linked.</div>`}
-          <button class="btn sm secondary" style="margin-top:6px;" onclick="Questions.promptNew('${note.topicId}')">+ Add question</button>
+          <button class="btn sm secondary" style="margin-top:6px;" onclick="Questions.promptNew('${note.topicId}')" title="Add a question for this topic">+ Add question</button>
         </div>
         <div class="block">
           <h4>Related content</h4>
-          ${relatedJargons.length ? relatedJargons.map(j => `<div class="subtle" style="cursor:pointer;" onclick="UI.nav('jargons')">🔤 ${esc(j.term)}</div>`).join('') : ''}
-          ${relatedPdfs.length ? relatedPdfs.map(p => `<div class="subtle" style="cursor:pointer;" onclick="UI.nav('pdf',{id:'${p.id}'})">📄 ${esc(p.title)}</div>`).join('') : ''}
+          ${relatedJargons.length ? relatedJargons.map(j => `<div class="subtle" style="cursor:pointer;" onclick="UI.nav('jargons')" title="Open Jargons">🔤 ${esc(j.term)}</div>`).join('') : ''}
+          ${relatedPdfs.length ? relatedPdfs.map(p => `<div class="subtle" style="cursor:pointer;" onclick="UI.nav('pdf',{id:'${p.id}'})" title="Open this PDF">📄 ${esc(p.title)}</div>`).join('') : ''}
           ${(!relatedJargons.length && !relatedPdfs.length) ? '<div class="subtle">Nothing else tagged to this subject yet.</div>' : ''}
         </div>
         <div class="block">
           <h4>Export &amp; history</h4>
-          <button class="btn sm secondary" onclick="Notes.exportMarkdown('${id}')">⬇ Markdown</button>
-          <button class="btn sm secondary" onclick="Notes.exportHtml('${id}')">⬇ HTML</button>
-          <button class="btn sm secondary" style="margin-top:6px;" onclick="Notes.showHistory('${id}')">🕘 Version history</button>
+          <button class="btn sm secondary" onclick="Notes.exportMarkdown('${id}')" title="Download this note as a Markdown file">⬇ Markdown</button>
+          <button class="btn sm secondary" onclick="Notes.exportHtml('${id}')" title="Download this note as an HTML file">⬇ HTML</button>
+          <button class="btn sm secondary" style="margin-top:6px;" onclick="Notes.showHistory('${id}')" title="See and restore earlier versions of this note">🕘 Version history</button>
         </div>
         <div class="block">
-          <button class="btn secondary sm" onclick="Bookmarks.add('note','${id}','${esc(note.title)}')">🔖 Bookmark this note</button>
-          <button class="btn danger sm" style="margin-top:6px;" onclick="Notes.remove('${id}')">Delete note</button>
+          <button class="btn secondary sm" onclick="Bookmarks.add('note','${id}','${esc(note.title)}')" title="Save this note to your Bookmarks">🔖 Bookmark this note</button>
+          <button class="btn danger sm" style="margin-top:6px;" onclick="Notes.remove('${id}')" title="Move this note to Trash">Delete note</button>
         </div>
       </div>
     </div>`;
@@ -670,20 +670,20 @@ const Notes = {
       <div style="max-height:50vh;overflow-y:auto;">
         ${versions.map(v => `<div class="list-row" style="padding:8px 4px;">
           <div style="flex:1;">${fmtDate(v.createdAt)} · ${new Date(v.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}<div class="subtle">${esc(v.title)}</div></div>
-          <button class="btn sm secondary" onclick="Notes.previewVersion('${v.id}')">Preview</button>
-          <button class="btn sm secondary" onclick="Notes.restoreVersion('${id}','${v.id}')">Restore</button>
+          <button class="btn sm secondary" onclick="Notes.previewVersion('${v.id}')" title="View this version without changing your current note">Preview</button>
+          <button class="btn sm secondary" onclick="Notes.restoreVersion('${id}','${v.id}')" title="Replace your current content with this version (your current version is saved first)">Restore</button>
         </div>`).join('')}
       </div>
-      <div class="modal-actions"><button class="btn secondary" onclick="Modal.close()">Close</button></div>` :
+      <div class="modal-actions"><button class="btn secondary" onclick="Modal.close()" title="Close this dialog">Close</button></div>` :
       `<p class="subtle">No earlier versions yet — they're captured automatically as you edit (roughly every few minutes of active writing).</p>
-      <div class="modal-actions"><button class="btn secondary" onclick="Modal.close()">Close</button></div>`, true);
+      <div class="modal-actions"><button class="btn secondary" onclick="Modal.close()" title="Close this dialog">Close</button></div>`, true);
   },
   previewVersion(versionId) {
     const v = (Cache.noteVersions || []).find(x => x.id === versionId); if (!v) return;
     Modal.open(`Preview · ${fmtDate(v.createdAt)}`, `
       <div class="subtle" style="margin-bottom:8px;">${esc(v.title)}</div>
       <div style="max-height:50vh;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:10px;">${v.content}</div>
-      <div class="modal-actions"><button class="btn secondary" onclick="Modal.close()">Close</button></div>`, true);
+      <div class="modal-actions"><button class="btn secondary" onclick="Modal.close()" title="Close this dialog">Close</button></div>`, true);
   },
   async restoreVersion(noteId, versionId) {
     if (!confirm('Restore this version? Your current content will be saved as a version too, so nothing is lost.')) return;
@@ -718,10 +718,10 @@ const Notes = {
     const title = file.name.replace(/\.[^.]+$/, '');
     Modal.open('Import as Note', `
       <p class="subtle">Imported from ${esc(file.name)}.</p>
-      <label>Title</label><input type="text" id="mImportTitle" value="${esc(title)}">
-      <label>Topic</label><select id="mImportTopic">${topicOptions()}</select>
-      <div class="modal-actions"><button class="btn secondary" onclick="Modal.close()">Cancel</button>
-      <button class="btn" onclick="Notes.finishImport()">Import</button></div>`);
+      <label>Title</label><input type="text" id="mImportTitle" value="${esc(title)}" title="Title for the imported note">
+      <label>Topic</label><select id="mImportTopic" title="Which topic this imported note belongs to">${topicOptions()}</select>
+      <div class="modal-actions"><button class="btn secondary" onclick="Modal.close()" title="Discard and close this dialog">Cancel</button>
+      <button class="btn" onclick="Notes.finishImport()" title="Create the note from this file">Import</button></div>`);
   },
   async finishImport() {
     const title = document.getElementById('mImportTitle').value.trim() || 'Imported note';
@@ -793,11 +793,11 @@ const Notes = {
   editMeta(id) {
     const n = Cache.notes.find(x => x.id === id);
     Modal.open('Edit note details', `
-      <label>Importance (1-5)</label><input type="number" id="mImp" min="1" max="5" value="${n.importance}">
-      <label>Exam frequency</label><select id="mFreq"><option ${n.examFrequency === 'low' ? 'selected' : ''}>low</option><option ${n.examFrequency === 'medium' ? 'selected' : ''}>medium</option><option ${n.examFrequency === 'high' ? 'selected' : ''}>high</option></select>
-      <label>Status</label><select id="mStatus"><option ${n.status === 'new' ? 'selected' : ''}>new</option><option ${n.status === 'learning' ? 'selected' : ''}>learning</option><option ${n.status === 'difficult' ? 'selected' : ''}>difficult</option><option ${n.status === 'mastered' ? 'selected' : ''}>mastered</option></select>
-      <label>Tags (comma separated)</label><input type="text" id="mTags" value="${(n.tags || []).join(', ')}">
-      <div class="modal-actions"><button class="btn secondary" onclick="Modal.close()">Cancel</button><button class="btn" onclick="Notes.saveMeta('${id}')">Save</button></div>`);
+      <label>Importance (1-5)</label><input type="number" id="mImp" min="1" max="5" value="${n.importance}" title="Importance, 1 (low) to 5 (high)">
+      <label>Exam frequency</label><select id="mFreq" title="How often this comes up in exams"><option ${n.examFrequency === 'low' ? 'selected' : ''}>low</option><option ${n.examFrequency === 'medium' ? 'selected' : ''}>medium</option><option ${n.examFrequency === 'high' ? 'selected' : ''}>high</option></select>
+      <label>Status</label><select id="mStatus" title="Your current study status for this note"><option ${n.status === 'new' ? 'selected' : ''}>new</option><option ${n.status === 'learning' ? 'selected' : ''}>learning</option><option ${n.status === 'difficult' ? 'selected' : ''}>difficult</option><option ${n.status === 'mastered' ? 'selected' : ''}>mastered</option></select>
+      <label>Tags (comma separated)</label><input type="text" id="mTags" value="${(n.tags || []).join(', ')}" title="Comma-separated tags">
+      <div class="modal-actions"><button class="btn secondary" onclick="Modal.close()" title="Discard and close this dialog">Cancel</button><button class="btn" onclick="Notes.saveMeta('${id}')" title="Save these details">Save</button></div>`);
   },
   async saveMeta(id) {
     const n = Cache.notes.find(x => x.id === id);
@@ -813,11 +813,11 @@ const Notes = {
 const Mnemonics = {
   promptNew(topicId) {
     Modal.open('New Mnemonic', `
-      <label>Title</label><input type="text" id="mTitle" placeholder="e.g. ITC Conditions">
-      <label>Mnemonic</label><input type="text" id="mCode" placeholder="e.g. RITE">
+      <label>Title</label><input type="text" id="mTitle" placeholder="e.g. ITC Conditions" title="Mnemonic title">
+      <label>Mnemonic</label><input type="text" id="mCode" placeholder="e.g. RITE" title="The memory code itself">
       <label>Meaning (one line per letter)</label><textarea id="mMeaning" rows="4" placeholder="R = Registered person&#10;I = Invoice&#10;T = Tax paid&#10;E = Eligible use"></textarea>
-      <label>Topic</label><select id="mTopic">${topicOptions(topicId)}</select>
-      <div class="modal-actions"><button class="btn secondary" onclick="Modal.close()">Cancel</button><button class="btn" onclick="Mnemonics.create()">Save</button></div>`);
+      <label>Topic</label><select id="mTopic" title="Which topic this mnemonic belongs to">${topicOptions(topicId)}</select>
+      <div class="modal-actions"><button class="btn secondary" onclick="Modal.close()" title="Discard and close this dialog">Cancel</button><button class="btn" onclick="Mnemonics.create()" title="Save this mnemonic">Save</button></div>`);
   },
   async create() {
     const title = document.getElementById('mTitle').value.trim(); if (!title) return;
@@ -841,16 +841,16 @@ const Mnemonics = {
     const items = Cache.mnemonics || [];
     if (!items.length) return emptyState('🧠', 'Build your memory bank.', 'Create Mnemonic', "Mnemonics.promptNew()");
     return `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
-      <h2 style="margin:0;">Mnemonics</h2><button class="btn" onclick="Mnemonics.promptNew()">+ New Mnemonic</button></div>
+      <h2 style="margin:0;">Mnemonics</h2><button class="btn" onclick="Mnemonics.promptNew()" title="Create a new memory aid">+ New Mnemonic</button></div>
       <div class="grid cols-3">${items.map(m => { const fc = Flashcards.findFor('mnemonic', m.id); return `
       <div class="card">
         <div style="display:flex;justify-content:space-between;"><b>${esc(m.title)}</b>
-        <span style="cursor:pointer;" onclick="Mnemonics.toggleFav('${m.id}')">${m.favorite ? '★' : '☆'}</span></div>
+        <span style="cursor:pointer;" onclick="Mnemonics.toggleFav('${m.id}')" title="Toggle favorite — favorites surface in Last-Minute Revision">${m.favorite ? '★' : '☆'}</span></div>
         <div class="pill" style="margin:6px 0;">${esc(m.mnemonicText)}</div>
         <div class="subtle" style="white-space:pre-line;">${esc(m.meaning)}</div>
         <div class="subtle" style="margin-top:8px;">Topic: ${topicName(m.topicId)}</div>
         <div class="subtle">🃏 ${fc && fc.nextDate ? 'Next revision: ' + fmtDateShort(fc.nextDate) : 'Flashcard not yet reviewed'}</div>
-        <div style="text-align:right;margin-top:8px;"><button class="btn sm secondary" onclick="Mnemonics.remove('${m.id}')">Delete</button></div>
+        <div style="text-align:right;margin-top:8px;"><button class="btn sm secondary" onclick="Mnemonics.remove('${m.id}')" title="Delete this mnemonic">Delete</button></div>
       </div>`; }).join('')}</div>`;
   }
 };
@@ -859,12 +859,12 @@ const Mnemonics = {
 const Jargons = {
   promptNew() {
     Modal.open('New Jargon / Term', `
-      <label>Term</label><input type="text" id="jTerm" placeholder="e.g. Material Misstatement">
+      <label>Term</label><input type="text" id="jTerm" placeholder="e.g. Material Misstatement" title="The term or keyword">
       <label>Meaning</label><textarea id="jMeaning" rows="3"></textarea>
-      <label>Memory trick (optional)</label><input type="text" id="jTrick">
-      <label>Subject</label><select id="jSubject">${subjectOptions()}</select>
-      <label>Importance</label><select id="jImp"><option>Normal</option><option>Important</option><option>Must Memorize</option></select>
-      <div class="modal-actions"><button class="btn secondary" onclick="Modal.close()">Cancel</button><button class="btn" onclick="Jargons.create()">Save</button></div>`);
+      <label>Memory trick (optional)</label><input type="text" id="jTrick" title="An optional trick to help you remember it">
+      <label>Subject</label><select id="jSubject" title="Which subject this term belongs to">${subjectOptions()}</select>
+      <label>Importance</label><select id="jImp" title="How important this term is to memorize"><option>Normal</option><option>Important</option><option>Must Memorize</option></select>
+      <div class="modal-actions"><button class="btn secondary" onclick="Modal.close()" title="Discard and close this dialog">Cancel</button><button class="btn" onclick="Jargons.create()" title="Save this term">Save</button></div>`);
   },
   async create() {
     const term = document.getElementById('jTerm').value.trim(); if (!term) return;
@@ -880,13 +880,13 @@ const Jargons = {
     const items = Cache.jargons || [];
     if (!items.length) return emptyState('🔤', 'Track tricky terms, keywords and abbreviations.', 'Add Jargon', "Jargons.promptNew()");
     return `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
-      <h2 style="margin:0;">Jargons & Keywords</h2><button class="btn" onclick="Jargons.promptNew()">+ New Term</button></div>
+      <h2 style="margin:0;">Jargons & Keywords</h2><button class="btn" onclick="Jargons.promptNew()" title="Add a term, keyword or abbreviation">+ New Term</button></div>
       ${items.map(j => `<div class="card" style="margin-bottom:10px;">
         <div style="display:flex;justify-content:space-between;"><b>${esc(j.term)}</b><span class="pill ${j.importance === 'Must Memorize' ? 'warn' : ''}">${esc(j.importance)}</span></div>
         <div style="margin:6px 0;">${esc(j.meaning)}</div>
         ${j.memoryTrick ? `<div class="subtle">💡 ${esc(j.memoryTrick)}</div>` : ''}
         <div class="subtle" style="margin-top:4px;">${subjectName(j.subjectId)}</div>
-        <div style="text-align:right;"><button class="btn sm secondary" onclick="Jargons.remove('${j.id}')">Delete</button></div>
+        <div style="text-align:right;"><button class="btn sm secondary" onclick="Jargons.remove('${j.id}')" title="Delete this term">Delete</button></div>
       </div>`).join('')}`;
   }
 };
@@ -896,15 +896,15 @@ const Questions = {
   promptNew(topicId) {
     Modal.open('New Question', `
       <label>Question</label><textarea id="qText" rows="3"></textarea>
-      <label>Type</label><select id="qType" onchange="Questions.onTypeChange()">
+      <label>Type</label><select id="qType" onchange="Questions.onTypeChange()" title="Question type — changes the fields below">
         <option>Theory</option><option>Practical</option><option>MCQ</option><option>True/False</option><option>Fill in the Blank</option><option>Case Study</option><option>Numerical</option>
       </select>
       <div id="qTypeFields"></div>
-      <label>Marks</label><input type="number" id="qMarks" value="5">
-      <label>Difficulty</label><select id="qDiff"><option>Easy</option><option selected>Medium</option><option>Hard</option></select>
+      <label>Marks</label><input type="number" id="qMarks" value="5" title="How many marks this question is worth">
+      <label>Difficulty</label><select id="qDiff" title="How hard this question is"><option>Easy</option><option selected>Medium</option><option>Hard</option></select>
       <label>Model answer / explanation (optional)</label><textarea id="qAnswer" rows="3"></textarea>
-      <label>Topic</label><select id="qTopic">${topicOptions(topicId)}</select>
-      <div class="modal-actions"><button class="btn secondary" onclick="Modal.close()">Cancel</button><button class="btn" onclick="Questions.create()">Save</button></div>`);
+      <label>Topic</label><select id="qTopic" title="Which topic this question belongs to">${topicOptions(topicId)}</select>
+      <div class="modal-actions"><button class="btn secondary" onclick="Modal.close()" title="Discard and close this dialog">Cancel</button><button class="btn" onclick="Questions.create()" title="Save this question">Save</button></div>`);
     setTimeout(() => Questions.onTypeChange(), 30);
   },
   onTypeChange() {
@@ -914,12 +914,12 @@ const Questions = {
       el.innerHTML = `<label>Options (select the correct one)</label>
         ${[0, 1, 2, 3].map(i => `<div style="display:flex;gap:6px;align-items:center;margin-bottom:4px;">
           <input type="radio" name="qCorrectOpt" value="${i}" ${i === 0 ? 'checked' : ''}>
-          <input type="text" id="qOpt${i}" placeholder="Option ${i + 1}" style="flex:1;">
+          <input type="text" id="qOpt${i}" placeholder="Option ${i + 1}" style="flex:1;" title="Answer option ${i + 1}">
         </div>`).join('')}`;
     } else if (type === 'True/False') {
-      el.innerHTML = `<label>Correct answer</label><select id="qTFAnswer"><option value="True">True</option><option value="False">False</option></select>`;
+      el.innerHTML = `<label>Correct answer</label><select id="qTFAnswer" title="The correct answer for this question"><option value="True">True</option><option value="False">False</option></select>`;
     } else if (type === 'Fill in the Blank') {
-      el.innerHTML = `<label>Correct answer text</label><input type="text" id="qFIBAnswer" placeholder="Exact expected answer">`;
+      el.innerHTML = `<label>Correct answer text</label><input type="text" id="qFIBAnswer" placeholder="Exact expected answer" title="The exact text that counts as correct (matched case-insensitively)">`;
     } else {
       el.innerHTML = '';
     }
@@ -962,7 +962,7 @@ const Questions = {
     const items = Cache.questions || [];
     if (!items.length) return emptyState('❓', 'Build your question bank from past papers and practice.', 'Add Question', "Questions.promptNew()");
     return `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
-      <h2 style="margin:0;">Questions (${items.length})</h2><button class="btn" onclick="Questions.promptNew()">+ New Question</button></div>
+      <h2 style="margin:0;">Questions (${items.length})</h2><button class="btn" onclick="Questions.promptNew()" title="Add a question to your question bank">+ New Question</button></div>
       ${items.map(q => { const fc = Flashcards.findFor('question', q.id); return `<div class="card" style="margin-bottom:10px;">
         <div style="display:flex;justify-content:space-between;gap:10px;">
           <div>${esc(q.questionText)}</div>
@@ -983,29 +983,29 @@ const Questions = {
       return `<div style="margin-top:8px;">
         ${q.options.map((opt, i) => `<label style="display:flex;gap:6px;align-items:center;margin-bottom:4px;">
           <input type="radio" name="mcq-${q.id}" value="${i}"> ${esc(opt)}</label>`).join('')}
-        <button class="btn sm secondary" onclick="Questions.checkMCQ('${q.id}')">Check answer</button>
-        <button class="btn sm secondary" onclick="Questions.remove('${q.id}')">Delete</button>
+        <button class="btn sm secondary" onclick="Questions.checkMCQ('${q.id}')" title="Grade your selected answer">Check answer</button>
+        <button class="btn sm secondary" onclick="Questions.remove('${q.id}')" title="Delete this question">Delete</button>
       </div>`;
     }
     if (q.type === 'True/False') {
       return `<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">
-        <button class="btn sm secondary" onclick="Questions.checkTF('${q.id}','True')">True</button>
-        <button class="btn sm secondary" onclick="Questions.checkTF('${q.id}','False')">False</button>
-        <button class="btn sm secondary" onclick="Questions.remove('${q.id}')">Delete</button>
+        <button class="btn sm secondary" onclick="Questions.checkTF('${q.id}','True')" title="Answer True">True</button>
+        <button class="btn sm secondary" onclick="Questions.checkTF('${q.id}','False')" title="Answer False">False</button>
+        <button class="btn sm secondary" onclick="Questions.remove('${q.id}')" title="Delete this question">Delete</button>
       </div>`;
     }
     if (q.type === 'Fill in the Blank') {
       return `<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">
-        <input type="text" id="fib-${q.id}" placeholder="Your answer" style="flex:1;min-width:140px;">
-        <button class="btn sm secondary" onclick="Questions.checkFIB('${q.id}')">Check</button>
-        <button class="btn sm secondary" onclick="Questions.remove('${q.id}')">Delete</button>
+        <input type="text" id="fib-${q.id}" placeholder="Your answer" style="flex:1;min-width:140px;" title="Type your answer, then click Check">
+        <button class="btn sm secondary" onclick="Questions.checkFIB('${q.id}')" title="Grade your typed answer">Check</button>
+        <button class="btn sm secondary" onclick="Questions.remove('${q.id}')" title="Delete this question">Delete</button>
       </div>`;
     }
     return `<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">
-      <button class="btn sm secondary" onclick="Questions.toggleAnswer('${q.id}')">Reveal answer</button>
-      <button class="btn sm secondary" onclick="Questions.setStatus('${q.id}','correct')">Mark correct</button>
-      <button class="btn sm secondary" onclick="Questions.setStatus('${q.id}','incorrect')">Mark incorrect</button>
-      <button class="btn sm secondary" onclick="Questions.remove('${q.id}')">Delete</button>
+      <button class="btn sm secondary" onclick="Questions.toggleAnswer('${q.id}')" title="Show the model answer">Reveal answer</button>
+      <button class="btn sm secondary" onclick="Questions.setStatus('${q.id}','correct')" title="Mark your attempt correct">Mark correct</button>
+      <button class="btn sm secondary" onclick="Questions.setStatus('${q.id}','incorrect')" title="Mark your attempt incorrect">Mark incorrect</button>
+      <button class="btn sm secondary" onclick="Questions.remove('${q.id}')" title="Delete this question">Delete</button>
     </div>`;
   },
   checkMCQ(id) {
@@ -1043,9 +1043,9 @@ const Bookmarks = {
     const items = Cache.bookmarks || [];
     if (!items.length) return emptyState('🔖', 'Bookmark notes, PDF pages and questions to find them fast.', null, null);
     return `<h2>Bookmarks</h2>${items.map(b => `
-      <div class="list-row" onclick="Bookmarks.open('${b.targetType}','${b.targetId}')">
+      <div class="list-row" onclick="Bookmarks.open('${b.targetType}','${b.targetId}')" title="Open this bookmark">
         <span>🔖</span><div style="flex:1;">${esc(b.label)}<div class="subtle">${b.targetType} · ${fmtDate(b.createdAt)}</div></div>
-        <button class="btn sm secondary" onclick="event.stopPropagation();Bookmarks.remove('${b.id}')">✕</button>
+        <button class="btn sm secondary" onclick="event.stopPropagation();Bookmarks.remove('${b.id}')" title="Remove this bookmark">✕</button>
       </div>`).join('')}`;
   },
   open(type, id) {
@@ -1095,11 +1095,11 @@ const Pdfs = {
     input.value = '';
     Pdfs._pendingUpload = { filename: file.name, buf, pageCount };
     Modal.open('Import PDF', `
-      <label>Title</label><input type="text" id="mPdfTitle" value="${esc(file.name.replace(/\.pdf$/i, ''))}">
+      <label>Title</label><input type="text" id="mPdfTitle" value="${esc(file.name.replace(/\.pdf$/i, ''))}" title="Title for this PDF in your library">
       <label>Subject (optional — powers related-content links)</label>
-      <select id="mPdfSubject"><option value="">— None —</option>${subjectOptions()}</select>
-      <div class="modal-actions"><button class="btn secondary" onclick="Modal.close()">Cancel</button>
-      <button class="btn" onclick="Pdfs.finishUpload()">Import</button></div>`);
+      <select id="mPdfSubject" title="Tag this PDF with a subject to power related-content links"><option value="">— None —</option>${subjectOptions()}</select>
+      <div class="modal-actions"><button class="btn secondary" onclick="Modal.close()" title="Discard and close this dialog">Cancel</button>
+      <button class="btn" onclick="Pdfs.finishUpload()" title="Save this PDF to your library">Import</button></div>`);
   },
   async finishUpload() {
     const p = Pdfs._pendingUpload; if (!p) return;
@@ -1115,12 +1115,12 @@ const Pdfs = {
     return `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
       <h2 style="margin:0;">PDF Library</h2>
       <div><input type="file" id="pdfFileInput" accept="application/pdf" style="display:none" onchange="Pdfs.handleFile(this)">
-      <button class="btn" onclick="Pdfs.upload()">+ Import PDF</button></div></div>
+      <button class="btn" onclick="Pdfs.upload()" title="Choose a PDF file to upload">+ Import PDF</button></div></div>
       ${items.length ? `<div class="grid cols-3">${items.map(p => `
-      <div class="card" style="cursor:pointer;" onclick="UI.nav('pdf',{id:'${p.id}'})">
+      <div class="card" style="cursor:pointer;" onclick="UI.nav('pdf',{id:'${p.id}'})" title="Open this PDF">
         <div style="font-size:32px;">📄</div><b>${esc(p.title)}</b>
         <div class="subtle">${p.pageCount || '?'} pages</div>
-        <div style="text-align:right;margin-top:8px;"><button class="btn sm secondary" onclick="event.stopPropagation();Pdfs.remove('${p.id}')">Delete</button></div>
+        <div style="text-align:right;margin-top:8px;"><button class="btn sm secondary" onclick="event.stopPropagation();Pdfs.remove('${p.id}')" title="Move this PDF to Trash">Delete</button></div>
       </div>`).join('')}</div>` : emptyState('📄', 'No PDFs yet.', 'Import PDF', 'Pdfs.upload()')}`;
   },
   async renderViewer(id) {
@@ -1145,7 +1145,7 @@ const Pdfs = {
       </div>
       <div style="display:flex;flex:1;overflow:hidden;">
         <div class="pdf-canvas-wrap" id="pdfCanvasWrap">
-          <div class="pdf-page-wrap" id="pdfPageWrap" onclick="Pdfs.handlePageClick(event)">
+          <div class="pdf-page-wrap" id="pdfPageWrap" onclick="Pdfs.handlePageClick(event)" title="Select text to highlight/underline, or click to place a sticky note when Sticky Note mode is on">
             <canvas id="pdfCanvas"></canvas>
             <div class="pdf-textlayer" id="pdfTextLayer" onmouseup="Pdfs.onTextSelect(event)"></div>
             <div class="pdf-hl-overlay" id="pdfHlOverlay"></div>
@@ -1258,8 +1258,8 @@ const Pdfs = {
       <div class="subtle">"${esc(a.text)}"</div>
       <label>Note (optional)</label><textarea id="pdfAnnotComment" rows="3">${esc(a.comment || '')}</textarea>
       <div class="modal-actions">
-        <button class="btn danger sm" onclick="Pdfs.deleteAnnotation('${id}')">Delete</button>
-        <button class="btn sm" onclick="Pdfs.saveAnnotComment('${id}')">Save</button>
+        <button class="btn danger sm" onclick="Pdfs.deleteAnnotation('${id}')" title="Delete this permanently">Delete</button>
+        <button class="btn sm" onclick="Pdfs.saveAnnotComment('${id}')" title="Save this note">Save</button>
       </div>`);
   },
   openSticky(id) {
@@ -1267,8 +1267,8 @@ const Pdfs = {
     Modal.open('Sticky note', `
       <textarea id="pdfAnnotComment" rows="4">${esc(a.comment || '')}</textarea>
       <div class="modal-actions">
-        <button class="btn danger sm" onclick="Pdfs.deleteAnnotation('${id}')">Delete</button>
-        <button class="btn sm" onclick="Pdfs.saveAnnotComment('${id}')">Save</button>
+        <button class="btn danger sm" onclick="Pdfs.deleteAnnotation('${id}')" title="Delete this permanently">Delete</button>
+        <button class="btn sm" onclick="Pdfs.saveAnnotComment('${id}')" title="Save this note">Save</button>
       </div>`);
   },
   async saveAnnotComment(id) {
@@ -1331,9 +1331,9 @@ const Pdfs = {
     const pageAnnots = (Cache.annotations || []).filter(a => a.targetType === 'pdf' && a.pdfId === pdfId && a.page === pdfCurrentPage);
     return `
       <h4 style="font-size:12px;text-transform:uppercase;color:var(--text-dim);margin-top:0;">This page</h4>
-      ${pageAnnots.length ? pageAnnots.map(a => `<div class="subtle" style="cursor:pointer;padding:4px 0;" onclick="${a.kind === 'sticky' ? `Pdfs.openSticky('${a.id}')` : `Pdfs.openHighlight('${a.id}')`}">${a.kind === 'sticky' ? '📝' : a.kind === 'underline' ? '‾' : '🖍'} ${esc((a.comment || a.text || '').slice(0, 42))}</div>`).join('') : '<div class="subtle">None on this page yet.</div>'}
+      ${pageAnnots.length ? pageAnnots.map(a => `<div class="subtle" style="cursor:pointer;padding:4px 0;" title="Click to view, edit or delete" onclick="${a.kind === 'sticky' ? `Pdfs.openSticky('${a.id}')` : `Pdfs.openHighlight('${a.id}')`}">${a.kind === 'sticky' ? '📝' : a.kind === 'underline' ? '‾' : '🖍'} ${esc((a.comment || a.text || '').slice(0, 42))}</div>`).join('') : '<div class="subtle">None on this page yet.</div>'}
       <h4 style="font-size:12px;text-transform:uppercase;color:var(--text-dim);margin-top:14px;">Bookmarked pages</h4>
-      ${bookmarks.length ? bookmarks.map(b => `<div class="subtle" style="cursor:pointer;padding:4px 0;" onclick="Pdfs.goToPage(${b.page})">📍 Page ${b.page} ${b.label ? '— ' + esc(b.label) : ''}</div>`).join('') : '<div class="subtle">None yet.</div>'}
+      ${bookmarks.length ? bookmarks.map(b => `<div class="subtle" style="cursor:pointer;padding:4px 0;" onclick="Pdfs.goToPage(${b.page})" title="Jump to this page">📍 Page ${b.page} ${b.label ? '— ' + esc(b.label) : ''}</div>`).join('') : '<div class="subtle">None yet.</div>'}
     `;
   },
 
@@ -1352,11 +1352,11 @@ const Pdfs = {
     if (!pdfSplitNoteId) {
       return `<h4 style="margin-top:0;font-size:12px;text-transform:uppercase;color:var(--text-dim);">Notes while reading</h4>
         <label>Pick a note for this subject</label>
-        <select onchange="Pdfs.pickSplitNote(this.value)">
+        <select onchange="Pdfs.pickSplitNote(this.value)" title="Pick which note to edit alongside this PDF">
           <option value="">— Choose a note —</option>
           ${relatedNotes.map(n => `<option value="${n.id}">${esc(n.title)}</option>`).join('')}
         </select>
-        <button class="btn sm" style="margin-top:8px;" onclick="Pdfs.createSplitNote()">+ New note</button>
+        <button class="btn sm" style="margin-top:8px;" onclick="Pdfs.createSplitNote()" title="Create a new note for this PDF's subject">+ New note</button>
         ${!pdf?.subjectId ? '<div class="subtle" style="margin-top:8px;">Tip: assign this PDF a subject (re-import, or edit later) so its notes list here automatically.</div>' : ''}`;
     }
     const n = Cache.notes.find(x => x.id === pdfSplitNoteId);
@@ -1423,7 +1423,7 @@ const CmdK = {
     backdrop.className = 'cmdk-backdrop'; backdrop.id = 'cmdkBackdrop';
     backdrop.onclick = (e) => { if (e.target === backdrop) CmdK.close(); };
     backdrop.innerHTML = `<div class="cmdk">
-      <input id="cmdkInput" placeholder="Search everything, or type a command (New Note, Toggle Dark Mode…)" oninput="CmdK.search(this.value)">
+      <input id="cmdkInput" placeholder="Search everything, or type a command (New Note, Toggle Dark Mode…)" oninput="CmdK.search(this.value)" title="Search or type a command">
       <div class="cmdk-results" id="cmdkResults"></div>
     </div>`;
     document.body.appendChild(backdrop);
@@ -1455,10 +1455,10 @@ const CmdK = {
     this._results = results;
     const el = document.getElementById('cmdkResults'); if (!el) return;
     const more = query && Search.run(query).length > 20
-      ? `<div class="cmdk-item" onclick="CmdK.close();UI.nav('search',{q:'${esc(query).replace(/'/g, "\\'")}'});"><span>🔎 Open full Search page for "${esc(query)}"</span><small>Filters & sort</small></div>` : '';
+      ? `<div class="cmdk-item" onclick="CmdK.close();UI.nav('search',{q:'${esc(query).replace(/'/g, "\\'")}'});" title="See every match with filters and sorting"><span>🔎 Open full Search page for "${esc(query)}"</span><small>Filters & sort</small></div>` : '';
     el.innerHTML = (results.length ? results.map((r, i) => r.isCommand
-      ? `<div class="cmdk-item" onclick="CmdK.runCommand(${i})"><span>${r.icon} ${esc(r.label)}</span><small>${esc(r.kind)}</small></div>`
-      : `<div class="cmdk-item" onclick="CmdK.go('${r.route}','${r.id}')"><span>${r.icon} ${esc(r.title)}</span><small>${r.type}</small></div>`
+      ? `<div class="cmdk-item" onclick="CmdK.runCommand(${i})" title="Run this command"><span>${r.icon} ${esc(r.label)}</span><small>${esc(r.kind)}</small></div>`
+      : `<div class="cmdk-item" onclick="CmdK.go('${r.route}','${r.id}')" title="Open this result"><span>${r.icon} ${esc(r.title)}</span><small>${r.type}</small></div>`
     ).join('') : `<div class="cmdk-item subtle">No matches</div>`) + more;
   },
   runCommand(i) { const r = this._results[i]; if (r && r.run) r.run(); },
@@ -1485,16 +1485,16 @@ const SearchView = {
     if (typeof q === 'string') this.query = q;
     return `<h2>Search</h2>
       <div class="card" style="margin-bottom:16px;max-width:640px;">
-        <label>Query</label><input type="text" id="searchQ" value="${esc(this.query)}" oninput="SearchView.onInput(this.value)" placeholder="Search notes, PDFs, mnemonics, jargons, questions…">
+        <label>Query</label><input type="text" id="searchQ" value="${esc(this.query)}" oninput="SearchView.onInput(this.value)" placeholder="Search notes, PDFs, mnemonics, jargons, questions…" title="Search query">
         <div class="note-meta-row" style="margin-top:10px;">
-          <select onchange="SearchView.typeFilter=this.value;SearchView.refresh()">
+          <select onchange="SearchView.typeFilter=this.value;SearchView.refresh()" title="Filter results by content type">
             <option value="">All types</option>
             ${['Note', 'PDF', 'Mnemonic', 'Jargon', 'Question'].map(t => `<option value="${t}" ${this.typeFilter === t ? 'selected' : ''}>${t}</option>`).join('')}
           </select>
-          <select onchange="SearchView.subjectFilter=this.value;SearchView.refresh()">
+          <select onchange="SearchView.subjectFilter=this.value;SearchView.refresh()" title="Filter results by subject">
             <option value="">All subjects</option>${subjectOptions(this.subjectFilter)}
           </select>
-          <select onchange="SearchView.sortBy=this.value;SearchView.refresh()">
+          <select onchange="SearchView.sortBy=this.value;SearchView.refresh()" title="Change the sort order">
             <option value="relevance" ${this.sortBy === 'relevance' ? 'selected' : ''}>Sort: Relevance</option>
             <option value="newest" ${this.sortBy === 'newest' ? 'selected' : ''}>Sort: Newest</option>
             <option value="alpha" ${this.sortBy === 'alpha' ? 'selected' : ''}>Sort: Alphabetical</option>
@@ -1525,7 +1525,7 @@ const SearchView = {
     if (this.sortBy === 'alpha') results = [...results].sort((a, b) => (a.title || '').localeCompare(b.title || ''));
     else if (this.sortBy === 'newest') results = [...results].sort((a, b) => new Date(this.itemDate(b) || 0) - new Date(this.itemDate(a) || 0));
     return `<div class="subtle" style="margin-bottom:8px;">${results.length} result${results.length === 1 ? '' : 's'}</div>
-      ${results.length ? results.map(r => `<div class="list-row" onclick="UI.nav('${r.route}',{id:'${r.id}'})"><span>${r.icon}</span><div style="flex:1;">${esc(r.title)}</div><span class="pill">${r.type}</span></div>`).join('') : `<div class="subtle">No results.</div>`}`;
+      ${results.length ? results.map(r => `<div class="list-row" onclick="UI.nav('${r.route}',{id:'${r.id}'})" title="Open this ${r.type}"><span>${r.icon}</span><div style="flex:1;">${esc(r.title)}</div><span class="pill">${r.type}</span></div>`).join('') : `<div class="subtle">No results.</div>`}`;
   }
 };
 
@@ -1541,7 +1541,7 @@ const RevisionView = {
     if (this.mode === 'list' || !due.length) {
       if (!due.length) return emptyState('🎉', 'Nothing due for revision right now.', null, null);
       return `<h2>Revision due today (${due.length})</h2>
-      <button class="btn" style="margin-bottom:14px;" onclick="RevisionView.mode='cards';RevisionView.cardIndex=0;Router.render();">▶ Start Revision Session</button>
+      <button class="btn" style="margin-bottom:14px;" onclick="RevisionView.mode='cards';RevisionView.cardIndex=0;Router.render();" title="Begin reviewing everything due today, one card at a time">▶ Start Revision Session</button>
       ${due.map(d => `<div class="list-row"><span>${kindIcon(d)}</span>
         <div style="flex:1;">${esc(d.type === 'note' ? d.obj.title : d.obj.front)}</div>
         <span class="pill">${kindLabel(d)}</span></div>`).join('')}`;
@@ -1552,17 +1552,17 @@ const RevisionView = {
     const front = d.type === 'note' ? d.obj.title : d.obj.front;
     const back = d.type === 'note' ? '(open the note to review in full)' : d.obj.back;
     return `<div class="subtle" style="margin-bottom:10px;">Card ${this.cardIndex + 1} of ${due.length} · ${kindLabel(d)}</div>
-      <div class="flash-card" onclick="RevisionView.showAnswer=!RevisionView.showAnswer;Router.render();">
+      <div class="flash-card" onclick="RevisionView.showAnswer=!RevisionView.showAnswer;Router.render();" title="Click to flip the card">
         ${this.showAnswer ? esc(back) : esc(front)}
       </div>
       <div class="subtle" style="text-align:center;margin-top:8px;">Tap card to flip</div>
       <div class="rate-row">
-        <button class="again" onclick="RevisionView.rate('${d.type}','${d.obj.id}','again')">Again</button>
-        <button class="hard" onclick="RevisionView.rate('${d.type}','${d.obj.id}','hard')">Hard</button>
-        <button class="good" onclick="RevisionView.rate('${d.type}','${d.obj.id}','good')">Good</button>
-        <button class="easy" onclick="RevisionView.rate('${d.type}','${d.obj.id}','easy')">Easy</button>
+        <button class="again" onclick="RevisionView.rate('${d.type}','${d.obj.id}','again')" title="Forgot it — review again soon">Again</button>
+        <button class="hard" onclick="RevisionView.rate('${d.type}','${d.obj.id}','hard')" title="Struggled — review sooner than usual">Hard</button>
+        <button class="good" onclick="RevisionView.rate('${d.type}','${d.obj.id}','good')" title="Got it — review on the normal schedule">Good</button>
+        <button class="easy" onclick="RevisionView.rate('${d.type}','${d.obj.id}','easy')" title="Knew it well — review much later">Easy</button>
       </div>
-      <div style="text-align:center;margin-top:16px;"><button class="btn secondary sm" onclick="RevisionView.mode='list';Router.render();">Exit session</button></div>`;
+      <div style="text-align:center;margin-top:16px;"><button class="btn secondary sm" onclick="RevisionView.mode='list';Router.render();" title="Stop this revision session">Exit session</button></div>`;
   },
   async rate(type, id, rating) {
     await Revision.rate(type, id, rating);
@@ -1584,12 +1584,12 @@ const ExamMode = {
       <p class="subtle">Attempt questions one at a time under a timer, then self-grade against the model answer.</p>
       <div class="card" style="max-width:420px;">
         <label>Subject</label>
-        <select id="examSubject"><option value="">All subjects</option>${subjectOptions()}</select>
+        <select id="examSubject" title="Limit the exam to one subject"><option value="">All subjects</option>${subjectOptions()}</select>
         <label>Difficulty</label>
-        <select id="examDiff"><option value="">Any</option><option>Easy</option><option>Medium</option><option>Hard</option></select>
+        <select id="examDiff" title="Limit the exam to one difficulty"><option value="">Any</option><option>Easy</option><option>Medium</option><option>Hard</option></select>
         <label>Minutes per mark</label>
-        <input type="number" id="examMinPerMark" value="1.5" step="0.5" min="0.5">
-        <button class="btn" style="margin-top:12px;" onclick="ExamMode.start()">Start Exam</button>
+        <input type="number" id="examMinPerMark" value="1.5" step="0.5" min="0.5" title="How many minutes per mark to allow for each question">
+        <button class="btn" style="margin-top:12px;" onclick="ExamMode.start()" title="Begin the timed exam with these filters">Start Exam</button>
       </div>`;
   },
   start() {
@@ -1628,7 +1628,7 @@ const ExamMode = {
         <div class="card" style="max-width:640px;">
           <div style="display:flex;justify-content:space-between;gap:10px;"><b>${esc(q.questionText)}</b><span class="pill">${q.marks} marks</span></div>
           ${this.answerInputHTML(q)}
-          <button class="btn" style="margin-top:10px;" onclick="ExamMode.submit()">Submit</button>
+          <button class="btn" style="margin-top:10px;" onclick="ExamMode.submit()" title="Lock in your answer for this question">Submit</button>
         </div>`;
     }
     return this.gradedViewHTML(q);
@@ -1644,7 +1644,7 @@ const ExamMode = {
         <label><input type="radio" name="examTF" value="False"> False</label></div>`;
     }
     if (q.type === 'Fill in the Blank') {
-      return `<label>Your answer</label><input type="text" id="examFIB">`;
+      return `<label>Your answer</label><input type="text" id="examFIB" title="Type your answer">`;
     }
     return `<label>Your answer</label><textarea id="examAnswerBox" rows="6" oninput="ExamMode.answer=this.value">${esc(this.answer)}</textarea>`;
   },
@@ -1657,7 +1657,7 @@ const ExamMode = {
           <hr class="sep">
           <div class="pill ${this.autoVerdict === 'correct' ? '' : 'warn'}">${this.autoVerdict === 'correct' ? '✅ Correct' : '❌ Incorrect'}</div>
           <div class="subtle" style="margin-top:8px;">Your answer: ${esc(this.answer) || '(none)'}<br>Correct answer: ${esc(correctText || '')}</div>
-          <button class="btn" style="margin-top:14px;" onclick="ExamMode.grade('${this.autoVerdict}')">Continue</button>
+          <button class="btn" style="margin-top:14px;" onclick="ExamMode.grade('${this.autoVerdict}')" title="Move to the next question">Continue</button>
         </div>`;
     }
     return `<div class="subtle">Question ${this.index + 1} of ${this.queue.length}</div>
@@ -1669,9 +1669,9 @@ const ExamMode = {
         <label style="margin-top:12px;">Model answer</label>
         <div class="subtle" style="white-space:pre-wrap;padding:8px;background:var(--bg);border-radius:8px;">${esc(q.modelAnswer) || '(No model answer recorded)'}</div>
         <div class="rate-row" style="margin-top:14px;">
-          <button class="good" onclick="ExamMode.grade('correct')">Correct</button>
-          <button class="hard" onclick="ExamMode.grade('partial')">Partially correct</button>
-          <button class="again" onclick="ExamMode.grade('incorrect')">Incorrect</button>
+          <button class="good" onclick="ExamMode.grade('correct')" title="Mark this attempt correct">Correct</button>
+          <button class="hard" onclick="ExamMode.grade('partial')" title="Mark this attempt partially correct">Partially correct</button>
+          <button class="again" onclick="ExamMode.grade('incorrect')" title="Mark this attempt incorrect">Incorrect</button>
         </div>
         <div class="subtle" style="text-align:center;margin-top:8px;font-size:11.5px;">Grading also updates this question's flashcard revision schedule.</div>
       </div>`;
@@ -1720,7 +1720,7 @@ const ExamMode = {
         <div class="card"><div class="subtle">Needs work</div><h2 style="margin:6px 0;">${needsWork}</h2></div>
       </div>
       ${this.results.map(r => `<div class="list-row"><span>${r.verdict === 'correct' ? '✅' : r.verdict === 'partial' ? '🟡' : '🔴'}</span><div style="flex:1;">${esc(r.questionText)}</div><span class="pill">${r.marks} marks</span></div>`).join('')}
-      <button class="btn" style="margin-top:16px;" onclick="ExamMode.reset()">Start another exam</button>`;
+      <button class="btn" style="margin-top:16px;" onclick="ExamMode.reset()" title="Return to the exam setup screen">Start another exam</button>`;
   },
   reset() { this.state = 'setup'; this.queue = []; this.index = 0; this.results = []; Router.render(); }
 };
@@ -1762,8 +1762,8 @@ const LMR = {
       <p class="subtle">Rapid-fire through only your highest-priority content: ★4–5 notes, exam-important notes, difficult topics, must-memorize jargons, hard questions, and favorited mnemonics.</p>
       <div class="card" style="max-width:420px;">
         <label>Subject</label>
-        <select id="lmrSubject"><option value="">All subjects</option>${subjectOptions()}</select>
-        <button class="btn" style="margin-top:12px;" onclick="LMR.start()">Start</button>
+        <select id="lmrSubject" title="Limit the review stream to one subject"><option value="">All subjects</option>${subjectOptions()}</select>
+        <button class="btn" style="margin-top:12px;" onclick="LMR.start()" title="Begin the rapid-review stream">Start</button>
       </div>`;
   },
   start() {
@@ -1775,7 +1775,7 @@ const LMR = {
   renderStream() {
     if (this.index >= this.items.length) {
       return `<div class="empty-state"><div style="font-size:38px;">🎉</div><h3>That's everything marked important.</h3>
-      <button class="btn" onclick="LMR.reset()">Back to setup</button></div>`;
+      <button class="btn" onclick="LMR.reset()" title="Choose a different subject">Back to setup</button></div>`;
     }
     const it = this.items[this.index];
     return `<div class="subtle" style="margin-bottom:10px;">${this.index + 1} of ${this.items.length} · ${it.type}</div>
@@ -1784,10 +1784,10 @@ const LMR = {
         <div class="subtle" style="white-space:pre-wrap;margin-top:10px;">${esc(it.body)}</div>
       </div>
       <div style="display:flex;gap:8px;justify-content:center;margin-top:16px;">
-        <button class="btn secondary" ${this.index === 0 ? 'disabled' : ''} onclick="LMR.index--;Router.render();">‹ Prev</button>
-        <button class="btn" onclick="LMR.index++;Router.render();">Next ›</button>
+        <button class="btn secondary" ${this.index === 0 ? 'disabled' : ''} onclick="LMR.index--;Router.render();" title="Previous item">‹ Prev</button>
+        <button class="btn" onclick="LMR.index++;Router.render();" title="Next item">Next ›</button>
       </div>
-      <div style="text-align:center;margin-top:10px;"><button class="btn secondary sm" onclick="LMR.reset()">Exit</button></div>`;
+      <div style="text-align:center;margin-top:10px;"><button class="btn secondary sm" onclick="LMR.reset()" title="Stop this review stream">Exit</button></div>`;
   },
   reset() { this.mode = 'setup'; this.items = []; this.index = 0; Router.render(); }
 };
@@ -1799,14 +1799,14 @@ const Timer = {
     return `<h2>Study Timer</h2>
     <div class="card" style="max-width:420px;">
       <div style="display:flex;gap:8px;">
-        <button class="btn sm ${this.mode === '25/5' ? '' : 'secondary'}" onclick="Timer.setMode('25/5')">25 / 5</button>
-        <button class="btn sm ${this.mode === '50/10' ? '' : 'secondary'}" onclick="Timer.setMode('50/10')">50 / 10</button>
-        <button class="btn sm ${this.mode === 'custom' ? '' : 'secondary'}" onclick="Timer.setMode('custom')">Custom</button>
+        <button class="btn sm ${this.mode === '25/5' ? '' : 'secondary'}" onclick="Timer.setMode('25/5')" title="25 minutes work, 5 minutes break">25 / 5</button>
+        <button class="btn sm ${this.mode === '50/10' ? '' : 'secondary'}" onclick="Timer.setMode('50/10')" title="50 minutes work, 10 minutes break">50 / 10</button>
+        <button class="btn sm ${this.mode === 'custom' ? '' : 'secondary'}" onclick="Timer.setMode('custom')" title="Set your own duration">Custom</button>
       </div>
       <div class="timer-display" id="timerDisplay">${Timer.fmt()}</div>
       <div style="display:flex;gap:8px;justify-content:center;">
-        <button class="btn" onclick="Timer.start()">${this.running ? 'Pause' : 'Start'}</button>
-        <button class="btn secondary" onclick="Timer.reset()">Reset</button>
+        <button class="btn" onclick="Timer.start()" title="${this.running ? 'Pause the timer' : 'Start the timer'}">${this.running ? 'Pause' : 'Start'}</button>
+        <button class="btn secondary" onclick="Timer.reset()" title="Reset the timer to the start">Reset</button>
       </div>
     </div>
     <hr class="sep">
@@ -1835,10 +1835,10 @@ const TrashView = {
     if (!items.length) return emptyState('🗑', 'Trash is empty.', null, null);
     return `<h2>Trash</h2>${items.map(t => `<div class="list-row">
       <span>🗑</span><div style="flex:1;">${esc(t.data.title || t.data.term || t.data.questionText || t.data.name || 'Item')}<div class="subtle">${t.type} · deleted ${fmtDate(t.deletedAt)}</div></div>
-      <button class="btn sm secondary" onclick="restoreTrash('${t.id}');Router.render();">Restore</button>
-      <button class="btn sm danger" onclick="TrashView.purge('${t.id}')">Delete forever</button>
+      <button class="btn sm secondary" onclick="restoreTrash('${t.id}');Router.render();" title="Restore this item to where it was">Restore</button>
+      <button class="btn sm danger" onclick="TrashView.purge('${t.id}')" title="Permanently delete — this cannot be undone">Delete forever</button>
     </div>`).join('')}
-    ${items.length ? `<button class="btn danger sm" style="margin-top:12px;" onclick="TrashView.empty()">Empty Trash</button>` : ''}`;
+    ${items.length ? `<button class="btn danger sm" style="margin-top:12px;" onclick="TrashView.empty()" title="Permanently delete everything in Trash">Empty Trash</button>` : ''}`;
   },
   async purge(id) { if (!confirm('Permanently delete?')) return; await DB.del('trash', id); Cache.trash = Cache.trash.filter(t => t.id !== id); Router.render(); },
   async empty() { if (!confirm('Empty trash permanently?')) return; await DB.clearStore('trash'); Cache.trash = []; Router.render(); }
@@ -1851,22 +1851,22 @@ const SettingsView = {
     <div class="card" style="max-width:520px;margin-bottom:14px;">
       <h4 style="margin-top:0;">Appearance</h4>
       <label>Theme</label>
-      <select onchange="Settings.set('theme',this.value).then(()=>Theme.apply())">
+      <select onchange="Settings.set('theme',this.value).then(()=>Theme.apply())" title="Switch between light and dark mode">
         <option value="light" ${Settings.get('theme') === 'light' ? 'selected' : ''}>Light</option>
         <option value="dark" ${Settings.get('theme') === 'dark' ? 'selected' : ''}>Dark</option>
       </select>
     </div>
     <div class="card" style="max-width:520px;margin-bottom:14px;">
       <h4 style="margin-top:0;">Revision intervals (days)</h4>
-      <input type="text" id="intervalsInput" value="${Settings.get('revisionIntervals').join(', ')}">
-      <button class="btn sm" style="margin-top:8px;" onclick="SettingsView.saveIntervals()">Save intervals</button>
+      <input type="text" id="intervalsInput" value="${Settings.get('revisionIntervals').join(', ')}" title="Comma-separated days between reviews, e.g. 1, 3, 7, 14, 30">
+      <button class="btn sm" style="margin-top:8px;" onclick="SettingsView.saveIntervals()" title="Save these revision day-gaps">Save intervals</button>
     </div>
     <div class="card" style="max-width:520px;margin-bottom:14px;">
       <h4 style="margin-top:0;">Backup & Restore</h4>
       <p class="subtle">Export everything (notes, subjects, questions, mnemonics, jargons, revision data, settings, annotations, bookmarks) to a JSON file. PDFs are excluded from JSON backup — export them separately below.</p>
-      <button class="btn sm" onclick="BackupService.exportJSON()">⬇ Export backup (.json)</button>
+      <button class="btn sm" onclick="BackupService.exportJSON()" title="Download all your data as a JSON file">⬇ Export backup (.json)</button>
       <input type="file" id="restoreInput" accept="application/json" style="display:none" onchange="BackupService.importJSON(this)">
-      <button class="btn sm secondary" onclick="document.getElementById('restoreInput').click()">⬆ Restore from backup</button>
+      <button class="btn sm secondary" onclick="document.getElementById('restoreInput').click()" title="Choose a previously exported backup file">⬆ Restore from backup</button>
     </div>
     <div class="card" style="max-width:520px;">
       <h4 style="margin-top:0;">About</h4>
@@ -1920,7 +1920,7 @@ function subjectProgress() {
 }
 function emptyState(icon, msg, btnLabel, btnAction) {
   return `<div class="empty-state"><div style="font-size:38px;">${icon}</div><h3>${esc(msg)}</h3>
-    ${btnLabel ? `<button class="btn" onclick="${btnAction}">${esc(btnLabel)}</button>` : ''}</div>`;
+    ${btnLabel ? `<button class="btn" onclick="${btnAction}" title="${esc(btnLabel)}">${esc(btnLabel)}</button>` : ''}</div>`;
 }
 const Dashboard = {
   render() {
@@ -1990,14 +1990,14 @@ function TopicView(id) {
   ${notes.length ? notes.map(n => `<div class="list-row" draggable="true"
       ondragstart="Tree.dragStart(event,'note','${n.id}')" ondragover="Tree.allowDrop(event)"
       ondrop="Tree.onDrop(event,'note','notes','topicId','${id}','${n.id}')"
-      onclick="UI.nav('note',{id:'${n.id}'})"><span>📝</span><div style="flex:1;">${esc(n.title)}</div></div>`).join('') : `<div class="subtle">No notes yet.</div>`}
+      onclick="UI.nav('note',{id:'${n.id}'})" title="Open this note"><span>📝</span><div style="flex:1;">${esc(n.title)}</div></div>`).join('') : `<div class="subtle">No notes yet.</div>`}
   <h3 style="margin-top:18px;">Mnemonics</h3>
   ${mnemonics.length ? mnemonics.map(m => `<div class="card" style="margin-bottom:8px;"><b>${esc(m.title)}</b> — <span class="pill">${esc(m.mnemonicText)}</span></div>`).join('') : `<div class="subtle">None yet.</div>`}
   <h3 style="margin-top:18px;">Questions</h3>
   ${questions.length ? questions.map(q => `<div class="subtle" style="margin-bottom:6px;">❓ ${esc(q.questionText)}</div>`).join('') : `<div class="subtle">None yet.</div>`}
   ${(relatedJargons.length || relatedPdfs.length) ? `<h3 style="margin-top:18px;">Related (same subject)</h3>
-  ${relatedJargons.map(j => `<div class="subtle" style="cursor:pointer;" onclick="UI.nav('jargons')">🔤 ${esc(j.term)}</div>`).join('')}
-  ${relatedPdfs.map(p => `<div class="subtle" style="cursor:pointer;" onclick="UI.nav('pdf',{id:'${p.id}'})">📄 ${esc(p.title)}</div>`).join('')}` : ''}
+  ${relatedJargons.map(j => `<div class="subtle" style="cursor:pointer;" onclick="UI.nav('jargons')" title="Open Jargons">🔤 ${esc(j.term)}</div>`).join('')}
+  ${relatedPdfs.map(p => `<div class="subtle" style="cursor:pointer;" onclick="UI.nav('pdf',{id:'${p.id}'})" title="Open this PDF">📄 ${esc(p.title)}</div>`).join('')}` : ''}
   `;
 }
 

@@ -42,6 +42,8 @@ The interface was given a full visual identity pass: "Working Ledger" — ground
 
 Two follow-up refinements: **highlight colors** were originally too faint (low-opacity pastels) to notice at a glance — they're now solid, saturated highlighter colors, clearly visible in both themes. And **hover tooltips** were added throughout — every icon-only button (editor toolbar, PDF toolbar, topbar) and every main navigation item now shows what it does on hover, using the browser's native tooltip. The note-importance/exam-frequency/status pills at the top of a note are now clickable too (wired up to an editing form that existed in the code but was never actually reachable from the UI before).
 
+A third round: the note inspector's section labels ("Highlight legend," "Annotations," "Revision," etc.) were muted italic text that barely read as headings — they're now bold, full-color, with an underline rule, so they stand out properly. And tooltips now cover **every single interactive control in the app** — every button, dropdown, and text field, not just the ones that seemed most ambiguous at the time.
+
 ## Data & privacy
 
 Everything is stored locally in the browser's IndexedDB (database `castudy`) — notes, subjects, chapters, topics, mnemonics, jargons, questions, bookmarks, annotations, revision schedules, settings, and PDF files themselves. Nothing is sent to a server. Use **Settings → Export backup** regularly, since clearing browser data / a different device will not carry your notes over automatically (there's no cloud sync in this version — see Known Limitations).
