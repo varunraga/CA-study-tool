@@ -17,6 +17,84 @@ function stripHtml(html) {
   div.innerHTML = html || '';
   return (div.textContent || div.innerText || '').replace(/\s+/g, ' ').trim();
 }
+function downloadText(filename, text, mime) {
+  const blob = new Blob([text], { type: mime || 'text/plain' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename; a.click();
+}
+function slugify(s) { return (s || 'note').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'note'; }
+function sanitizeHtml(html) {
+  const div = document.createElement('div');
+  div.innerHTML = html || '';
+  div.querySelectorAll('script,style,iframe,object,embed').forEach(el => el.remove());
+  div.querySelectorAll('*').forEach(el => {
+    [...el.attributes].forEach(attr => { if (/^on/i.test(attr.name) || attr.name === 'srcdoc') el.removeAttribute(attr.name); });
+  });
+  return div.innerHTML;
+}
+/* Minimal, dependency-free HTML <-> Markdown conversion, covering exactly the
+   tags the note editor itself produces (h2/h3/p/strong/em/u/s/ul/ol/blockquote/
+   hr/a/mark/table) plus common tags likely to appear in imported material. */
+function htmlToMarkdown(html) {
+  const container = document.createElement('div');
+  container.innerHTML = html || '';
+  function tableToMarkdown(table) {
+    const rows = Array.from(table.querySelectorAll('tr')).map(tr => Array.from(tr.children).map(td => td.textContent.trim()));
+    if (!rows.length) return '';
+    const header = rows[0], body = rows.slice(1);
+    let md = '| ' + header.join(' | ') + ' |\n| ' + header.map(() => '---').join(' | ') + ' |\n';
+    body.forEach(r => { md += '| ' + r.join(' | ') + ' |\n'; });
+    return md;
+  }
+  function walk(node) {
+    let out = '';
+    node.childNodes.forEach(child => {
+      if (child.nodeType === 3) { out += child.textContent; return; }
+      if (child.nodeType !== 1) return;
+      const tag = child.tagName.toLowerCase();
+      if (tag === 'table') { out += `\n${tableToMarkdown(child)}\n`; return; }
+      const inner = walk(child);
+      switch (tag) {
+        case 'h2': out += `\n## ${inner.trim()}\n`; break;
+        case 'h3': out += `\n### ${inner.trim()}\n`; break;
+        case 'p': out += `\n${inner.trim()}\n`; break;
+        case 'strong': case 'b': out += `**${inner}**`; break;
+        case 'em': case 'i': out += `*${inner}*`; break;
+        case 'u': out += `_${inner}_`; break;
+        case 's': case 'strike': out += `~~${inner}~~`; break;
+        case 'mark': out += `==${inner}==`; break;
+        case 'blockquote': out += `\n> ${inner.trim().replace(/\n/g, '\n> ')}\n`; break;
+        case 'ul': out += `\n` + Array.from(child.children).map(li => `- ${walk(li).trim()}`).join('\n') + `\n`; break;
+        case 'ol': out += `\n` + Array.from(child.children).map((li, i) => `${i + 1}. ${walk(li).trim()}`).join('\n') + `\n`; break;
+        case 'li': out += inner; break;
+        case 'hr': out += `\n---\n`; break;
+        case 'br': out += `\n`; break;
+        case 'a': out += `[${inner}](${child.getAttribute('href') || ''})`; break;
+        default: out += inner;
+      }
+    });
+    return out;
+  }
+  return walk(container).replace(/\n{3,}/g, '\n\n').trim();
+}
+function markdownToHtml(md) {
+  const lines = (md || '').split(/\r?\n/);
+  let html = '', inList = null;
+  const closeList = () => { if (inList) { html += `</${inList}>`; inList = null; } };
+  const inline = (s) => esc(s).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/\*(.+?)\*/g, '<em>$1</em>').replace(/`(.+?)`/g, '<code>$1</code>');
+  lines.forEach(line => {
+    if (/^###\s+/.test(line)) { closeList(); html += `<h3>${inline(line.replace(/^###\s+/, ''))}</h3>`; return; }
+    if (/^##\s+/.test(line)) { closeList(); html += `<h2>${inline(line.replace(/^##\s+/, ''))}</h2>`; return; }
+    if (/^#\s+/.test(line)) { closeList(); html += `<h2>${inline(line.replace(/^#\s+/, ''))}</h2>`; return; }
+    if (/^>\s?/.test(line)) { closeList(); html += `<blockquote>${inline(line.replace(/^>\s?/, ''))}</blockquote>`; return; }
+    if (/^---+$/.test(line.trim())) { closeList(); html += `<hr>`; return; }
+    if (/^[-*]\s+/.test(line)) { if (inList !== 'ul') { closeList(); html += '<ul>'; inList = 'ul'; } html += `<li>${inline(line.replace(/^[-*]\s+/, ''))}</li>`; return; }
+    if (/^\d+\.\s+/.test(line)) { if (inList !== 'ol') { closeList(); html += '<ol>'; inList = 'ol'; } html += `<li>${inline(line.replace(/^\d+\.\s+/, ''))}</li>`; return; }
+    if (line.trim() === '') { closeList(); return; }
+    closeList(); html += `<p>${inline(line)}</p>`;
+  });
+  closeList();
+  return html || '<p></p>';
+}
 
 function toast(msg) {
   const wrap = document.getElementById('toastWrap');
@@ -29,13 +107,16 @@ function toast(msg) {
 /* ============================== DB ============================== */
 const STORES = ['courses', 'subjects', 'chapters', 'topics', 'notes', 'pdfs', 'pdfBookmarks',
   'annotations', 'mnemonics', 'jargons', 'questions', 'flashcards', 'bookmarks',
-  'studySessions', 'settings', 'trash'];
+  'studySessions', 'settings', 'trash', 'noteVersions'];
 
 const DB = (() => {
   let db;
   function open() {
     return new Promise((resolve, reject) => {
-      const req = indexedDB.open('castudy', 1);
+      // v2 adds the noteVersions store (note version history). onupgradeneeded
+      // fires for both brand-new browsers and anyone upgrading from v1, and
+      // just creates whatever stores are missing — existing data is untouched.
+      const req = indexedDB.open('castudy', 2);
       req.onupgradeneeded = (e) => {
         const d = e.target.result;
         STORES.forEach(name => {
@@ -149,6 +230,7 @@ const UI = {
         <button class="btn secondary" onclick="Modal.close();Mnemonics.promptNew();">🧠 Add Mnemonic</button>
         <button class="btn secondary" onclick="Modal.close();Jargons.promptNew();">🔤 Add Jargon</button>
         <button class="btn secondary" onclick="Modal.close();Questions.promptNew();">❓ Add Question</button>
+        <button class="btn secondary" onclick="Modal.close();Notes.importFile();">📥 Import file as Note (.txt/.md/.html)</button>
       </div>`, true);
   }
 };
@@ -158,7 +240,7 @@ const Modal = {
     const backdrop = document.createElement('div');
     backdrop.className = 'modal-backdrop'; backdrop.id = 'modalBackdrop';
     backdrop.onclick = (e) => { if (e.target === backdrop) Modal.close(); };
-    backdrop.innerHTML = `<div class="modal"><h3>${esc(title)}</h3>${bodyHtml}</div>`;
+    backdrop.innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-label="${esc(title)}"><h3>${esc(title)}</h3>${bodyHtml}</div>`;
     document.body.appendChild(backdrop);
   },
   close() { const b = document.getElementById('modalBackdrop'); if (b) b.remove(); }
@@ -181,17 +263,20 @@ const Courses = {
   },
   async promptNewSubject(courseId) {
     const name = prompt('Subject name?'); if (!name) return;
-    await saveItem('subjects', { id: uid(), courseId, name, color: '#6b5b3e', createdAt: nowISO() });
+    const order = (Cache.subjects || []).filter(s => s.courseId === courseId).length;
+    await saveItem('subjects', { id: uid(), courseId, name, color: '#6b5b3e', order, createdAt: nowISO() });
     Tree.render(); toast('Subject added');
   },
   async promptNewChapter(subjectId) {
     const name = prompt('Chapter name?'); if (!name) return;
-    await saveItem('chapters', { id: uid(), subjectId, name, createdAt: nowISO() });
+    const order = (Cache.chapters || []).filter(c => c.subjectId === subjectId).length;
+    await saveItem('chapters', { id: uid(), subjectId, name, order, createdAt: nowISO() });
     Tree.render(); toast('Chapter added');
   },
   async promptNewTopic(chapterId) {
     const name = prompt('Topic name?'); if (!name) return;
-    await saveItem('topics', { id: uid(), chapterId, name, createdAt: nowISO() });
+    const order = (Cache.topics || []).filter(t => t.chapterId === chapterId).length;
+    await saveItem('topics', { id: uid(), chapterId, name, order, createdAt: nowISO() });
     Tree.render(); toast('Topic added');
   }
 };
@@ -205,9 +290,26 @@ const Tree = {
     el.innerHTML = courses.map(c => this.renderCourse(c)).join('');
   },
   toggle(id) { this.expanded.has(id) ? this.expanded.delete(id) : this.expanded.add(id); this.render(); },
+  dragStart(e, kind, id) { e.dataTransfer.setData('text/plain', JSON.stringify({ kind, id })); e.stopPropagation(); },
+  allowDrop(e) { e.preventDefault(); e.stopPropagation(); },
+  async onDrop(e, kind, store, parentKey, parentId, targetId) {
+    e.preventDefault(); e.stopPropagation();
+    let data; try { data = JSON.parse(e.dataTransfer.getData('text/plain')); } catch (err) { return; }
+    if (!data || data.kind !== kind || data.id === targetId) return;
+    const siblings = (Cache[store] || []).filter(x => x[parentKey] === parentId).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    const ids = siblings.map(x => x.id).filter(id => id !== data.id);
+    const targetIdx = ids.indexOf(targetId);
+    if (targetIdx === -1) return;
+    ids.splice(targetIdx, 0, data.id);
+    for (let i = 0; i < ids.length; i++) {
+      const obj = siblings.find(s => s.id === ids[i]);
+      if (obj && obj.order !== i) { obj.order = i; await saveItem(store, obj); }
+    }
+    Tree.render();
+  },
   renderCourse(c) {
     const open = this.expanded.has(c.id);
-    const subjects = (Cache.subjects || []).filter(s => s.courseId === c.id);
+    const subjects = (Cache.subjects || []).filter(s => s.courseId === c.id).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     return `<div class="tree-node">
       <div class="tree-row" onclick="Tree.toggle('${c.id}')">
         <span class="caret">${open ? '▾' : '▸'}</span><span>📚 ${esc(c.name)}</span>
@@ -218,9 +320,12 @@ const Tree = {
   },
   renderSubject(s) {
     const open = this.expanded.has(s.id);
-    const chapters = (Cache.chapters || []).filter(c => c.subjectId === s.id);
+    const chapters = (Cache.chapters || []).filter(c => c.subjectId === s.id).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     return `<div class="tree-node">
-      <div class="tree-row" onclick="Tree.toggle('${s.id}')">
+      <div class="tree-row" draggable="true"
+        ondragstart="Tree.dragStart(event,'subject','${s.id}')" ondragover="Tree.allowDrop(event)"
+        ondrop="Tree.onDrop(event,'subject','subjects','courseId','${s.courseId}','${s.id}')"
+        onclick="Tree.toggle('${s.id}')" title="Drag to reorder">
         <span class="caret">${open ? '▾' : '▸'}</span><span>${esc(s.name)}</span>
         <span class="add-mini" onclick="event.stopPropagation();Courses.promptNewChapter('${s.id}')">+</span>
       </div>
@@ -229,13 +334,19 @@ const Tree = {
   },
   renderChapter(c) {
     const open = this.expanded.has(c.id);
-    const topics = (Cache.topics || []).filter(t => t.chapterId === c.id);
+    const topics = (Cache.topics || []).filter(t => t.chapterId === c.id).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     return `<div class="tree-node">
-      <div class="tree-row" onclick="Tree.toggle('${c.id}')">
+      <div class="tree-row" draggable="true"
+        ondragstart="Tree.dragStart(event,'chapter','${c.id}')" ondragover="Tree.allowDrop(event)"
+        ondrop="Tree.onDrop(event,'chapter','chapters','subjectId','${c.subjectId}','${c.id}')"
+        onclick="Tree.toggle('${c.id}')" title="Drag to reorder">
         <span class="caret">${open ? '▾' : '▸'}</span><span>${esc(c.name)}</span>
         <span class="add-mini" onclick="event.stopPropagation();Courses.promptNewTopic('${c.id}')">+</span>
       </div>
-      ${open ? `<div class="tree-children">${topics.map(t => `<div class="tree-row ${UI.route === 'topic' && UI.params.id === t.id ? 'active' : ''}" onclick="UI.nav('topic',{id:'${t.id}'})">📄 ${esc(t.name)}</div>`).join('') || '<div class="subtle" style="padding:4px 8px;">No topics</div>'}</div>` : ''}
+      ${open ? `<div class="tree-children">${topics.map(t => `<div class="tree-row ${UI.route === 'topic' && UI.params.id === t.id ? 'active' : ''}" draggable="true"
+        ondragstart="Tree.dragStart(event,'topic','${t.id}')" ondragover="Tree.allowDrop(event)"
+        ondrop="Tree.onDrop(event,'topic','topics','chapterId','${t.chapterId}','${t.id}')"
+        onclick="UI.nav('topic',{id:'${t.id}'})" title="Drag to reorder">📄 ${esc(t.name)}</div>`).join('') || '<div class="subtle" style="padding:4px 8px;">No topics</div>'}</div>` : ''}
     </div>`;
   }
 };
@@ -344,8 +455,9 @@ const Notes = {
     const topicId = document.getElementById('mNoteTopic').value;
     const topic = (Cache.topics || []).find(t => t.id === topicId);
     const chapter = topic ? (Cache.chapters || []).find(c => c.id === topic.chapterId) : null;
+    const order = (Cache.notes || []).filter(n => n.topicId === topicId).length;
     const note = {
-      id: uid(), title, topicId, chapterId: chapter?.id, subjectId: chapter?.subjectId,
+      id: uid(), title, topicId, chapterId: chapter?.id, subjectId: chapter?.subjectId, order,
       content: '<p>Start typing…</p>', tags: [], importance: 3, examFrequency: 'medium', status: 'new',
       createdAt: nowISO(), revision: { stage: -1, nextDate: null }
     };
@@ -359,6 +471,8 @@ const Notes = {
     const annots = (Cache.annotations || []).filter(a => a.targetType === 'note' && a.targetId === id);
     const linkedMnemonics = (Cache.mnemonics || []).filter(m => m.topicId === note.topicId);
     const linkedQuestions = (Cache.questions || []).filter(q => q.topicId === note.topicId);
+    const relatedJargons = (Cache.jargons || []).filter(j => note.subjectId && j.subjectId === note.subjectId);
+    const relatedPdfs = (Cache.pdfs || []).filter(p => note.subjectId && p.subjectId === note.subjectId);
     const colors = Settings.get('highlightColors');
     return `
     <div class="two-col">
@@ -374,10 +488,10 @@ const Notes = {
           ${(note.tags || []).map(t => `<span class="tag">#${esc(t)}</span>`).join('')}
         </div>
         <div class="editor-toolbar">
-          <button onclick="document.execCommand('bold')"><b>B</b></button>
-          <button onclick="document.execCommand('italic')"><i>I</i></button>
-          <button onclick="document.execCommand('underline')"><u>U</u></button>
-          <button onclick="document.execCommand('strikeThrough')"><s>S</s></button>
+          <button onclick="document.execCommand('bold')" aria-label="Bold"><b>B</b></button>
+          <button onclick="document.execCommand('italic')" aria-label="Italic"><i>I</i></button>
+          <button onclick="document.execCommand('underline')" aria-label="Underline"><u>U</u></button>
+          <button onclick="document.execCommand('strikeThrough')" aria-label="Strikethrough"><s>S</s></button>
           <div class="sep"></div>
           <button onclick="document.execCommand('formatBlock',false,'H2')">H2</button>
           <button onclick="document.execCommand('formatBlock',false,'H3')">H3</button>
@@ -390,8 +504,10 @@ const Notes = {
           <div class="sep"></div>
           <button onclick="Notes.insertTable('${id}')">▦ Table</button>
           <button onclick="Notes.insertLink()">🔗 Link</button>
+          <div class="sep"></div>
+          <button onclick="Focus.enter()" title="Focus Mode">🕶 Focus</button>
         </div>
-        <div class="editor-body" id="editorBody" contenteditable="true"
+        <div class="editor-body" id="editorBody" contenteditable="true" aria-label="Note content"
              oninput="Notes.onEdit('${id}')" onmouseup="Notes.onSelect(event,'${id}')" onkeyup="Notes.onSelect(event,'${id}')">${note.content}</div>
         <div class="save-status" id="saveStatus">Saved</div>
       </div>
@@ -425,6 +541,18 @@ const Notes = {
           <button class="btn sm secondary" style="margin-top:6px;" onclick="Questions.promptNew('${note.topicId}')">+ Add question</button>
         </div>
         <div class="block">
+          <h4>Related content</h4>
+          ${relatedJargons.length ? relatedJargons.map(j => `<div class="subtle" style="cursor:pointer;" onclick="UI.nav('jargons')">🔤 ${esc(j.term)}</div>`).join('') : ''}
+          ${relatedPdfs.length ? relatedPdfs.map(p => `<div class="subtle" style="cursor:pointer;" onclick="UI.nav('pdf',{id:'${p.id}'})">📄 ${esc(p.title)}</div>`).join('') : ''}
+          ${(!relatedJargons.length && !relatedPdfs.length) ? '<div class="subtle">Nothing else tagged to this subject yet.</div>' : ''}
+        </div>
+        <div class="block">
+          <h4>Export &amp; history</h4>
+          <button class="btn sm secondary" onclick="Notes.exportMarkdown('${id}')">⬇ Markdown</button>
+          <button class="btn sm secondary" onclick="Notes.exportHtml('${id}')">⬇ HTML</button>
+          <button class="btn sm secondary" style="margin-top:6px;" onclick="Notes.showHistory('${id}')">🕘 Version history</button>
+        </div>
+        <div class="block">
           <button class="btn secondary sm" onclick="Bookmarks.add('note','${id}','${esc(note.title)}')">🔖 Bookmark this note</button>
           <button class="btn danger sm" style="margin-top:6px;" onclick="Notes.remove('${id}')">Delete note</button>
         </div>
@@ -435,6 +563,7 @@ const Notes = {
     const n = Cache.notes.find(x => x.id === id); if (!n) return; n.title = val || 'Untitled';
     await saveItem('notes', n);
   }, 400),
+  lastVersionSaved: {}, // noteId -> timestamp, throttles how often a version snapshot is taken
   onEdit: debounce(async function (id) {
     const status = document.getElementById('saveStatus');
     if (status) status.textContent = 'Saving…';
@@ -442,7 +571,96 @@ const Notes = {
     n.content = document.getElementById('editorBody').innerHTML;
     await saveItem('notes', n);
     if (status) status.textContent = 'Saved · ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const last = Notes.lastVersionSaved[id] || 0;
+    if (Date.now() - last > 3 * 60 * 1000) { // at most one snapshot every 3 minutes per note
+      Notes.lastVersionSaved[id] = Date.now();
+      await Notes.saveVersionSnapshot(n);
+    }
   }, 600),
+  async saveVersionSnapshot(n) {
+    await saveItem('noteVersions', { id: uid(), noteId: n.id, title: n.title, content: n.content, createdAt: nowISO() });
+    Cache.noteVersions = Cache.noteVersions || [];
+    Cache.noteVersions = await DB.all('noteVersions');
+    // keep at most the 20 most recent snapshots per note
+    const versions = Cache.noteVersions.filter(v => v.noteId === n.id).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    for (const stale of versions.slice(20)) {
+      await DB.del('noteVersions', stale.id);
+    }
+    Cache.noteVersions = await DB.all('noteVersions');
+  },
+  showHistory(id) {
+    const versions = (Cache.noteVersions || []).filter(v => v.noteId === id).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    Modal.open('Version history', versions.length ? `
+      <div style="max-height:50vh;overflow-y:auto;">
+        ${versions.map(v => `<div class="list-row" style="padding:8px 4px;">
+          <div style="flex:1;">${fmtDate(v.createdAt)} · ${new Date(v.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}<div class="subtle">${esc(v.title)}</div></div>
+          <button class="btn sm secondary" onclick="Notes.previewVersion('${v.id}')">Preview</button>
+          <button class="btn sm secondary" onclick="Notes.restoreVersion('${id}','${v.id}')">Restore</button>
+        </div>`).join('')}
+      </div>
+      <div class="modal-actions"><button class="btn secondary" onclick="Modal.close()">Close</button></div>` :
+      `<p class="subtle">No earlier versions yet — they're captured automatically as you edit (roughly every few minutes of active writing).</p>
+      <div class="modal-actions"><button class="btn secondary" onclick="Modal.close()">Close</button></div>`, true);
+  },
+  previewVersion(versionId) {
+    const v = (Cache.noteVersions || []).find(x => x.id === versionId); if (!v) return;
+    Modal.open(`Preview · ${fmtDate(v.createdAt)}`, `
+      <div class="subtle" style="margin-bottom:8px;">${esc(v.title)}</div>
+      <div style="max-height:50vh;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:10px;">${v.content}</div>
+      <div class="modal-actions"><button class="btn secondary" onclick="Modal.close()">Close</button></div>`, true);
+  },
+  async restoreVersion(noteId, versionId) {
+    if (!confirm('Restore this version? Your current content will be saved as a version too, so nothing is lost.')) return;
+    const n = Cache.notes.find(x => x.id === noteId); if (!n) return;
+    await Notes.saveVersionSnapshot(n); // preserve current state before overwriting
+    const v = (Cache.noteVersions || []).find(x => x.id === versionId); if (!v) return;
+    n.title = v.title; n.content = v.content;
+    await saveItem('notes', n);
+    Modal.close();
+    toast('Version restored');
+    Router.render();
+  },
+  exportMarkdown(id) {
+    const n = Cache.notes.find(x => x.id === id); if (!n) return;
+    downloadText(`${slugify(n.title)}.md`, `# ${n.title}\n\n${htmlToMarkdown(n.content)}\n`, 'text/markdown');
+  },
+  exportHtml(id) {
+    const n = Cache.notes.find(x => x.id === id); if (!n) return;
+    downloadText(`${slugify(n.title)}.html`, `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(n.title)}</title></head><body><h1>${esc(n.title)}</h1>${n.content}</body></html>`, 'text/html');
+  },
+  importFile() { document.getElementById('noteImportInput')?.click(); },
+  async handleImportFile(input) {
+    const file = input.files[0]; if (!file) return;
+    const text = await file.text();
+    const ext = file.name.split('.').pop().toLowerCase();
+    let contentHtml;
+    if (ext === 'html' || ext === 'htm') contentHtml = sanitizeHtml(text);
+    else if (ext === 'md' || ext === 'markdown') contentHtml = markdownToHtml(text);
+    else contentHtml = text.split(/\r?\n\s*\r?\n/).map(p => `<p>${esc(p).replace(/\r?\n/g, '<br>')}</p>`).join('') || '<p></p>';
+    Notes._pendingImportHtml = contentHtml;
+    input.value = '';
+    const title = file.name.replace(/\.[^.]+$/, '');
+    Modal.open('Import as Note', `
+      <p class="subtle">Imported from ${esc(file.name)}.</p>
+      <label>Title</label><input type="text" id="mImportTitle" value="${esc(title)}">
+      <label>Topic</label><select id="mImportTopic">${topicOptions()}</select>
+      <div class="modal-actions"><button class="btn secondary" onclick="Modal.close()">Cancel</button>
+      <button class="btn" onclick="Notes.finishImport()">Import</button></div>`);
+  },
+  async finishImport() {
+    const title = document.getElementById('mImportTitle').value.trim() || 'Imported note';
+    const topicId = document.getElementById('mImportTopic').value;
+    const topic = (Cache.topics || []).find(t => t.id === topicId);
+    const chapter = topic ? (Cache.chapters || []).find(c => c.id === topic.chapterId) : null;
+    const note = await saveItem('notes', {
+      id: uid(), title, topicId, chapterId: chapter?.id, subjectId: chapter?.subjectId,
+      content: Notes._pendingImportHtml || '<p></p>', tags: [], importance: 3, examFrequency: 'medium', status: 'new',
+      createdAt: nowISO(), revision: { stage: -1, nextDate: null }
+    });
+    Notes._pendingImportHtml = null;
+    Modal.close(); toast('Note imported');
+    UI.nav('note', { id: note.id });
+  },
   insertTable() {
     document.execCommand('insertHTML', false, `<table><tr><td>Cell</td><td>Cell</td></tr><tr><td>Cell</td><td>Cell</td></tr></table><p><br></p>`);
   },
@@ -602,23 +820,55 @@ const Questions = {
   promptNew(topicId) {
     Modal.open('New Question', `
       <label>Question</label><textarea id="qText" rows="3"></textarea>
-      <label>Type</label><select id="qType"><option>Theory</option><option>Practical</option><option>MCQ</option><option>Case Study</option><option>Numerical</option></select>
+      <label>Type</label><select id="qType" onchange="Questions.onTypeChange()">
+        <option>Theory</option><option>Practical</option><option>MCQ</option><option>True/False</option><option>Fill in the Blank</option><option>Case Study</option><option>Numerical</option>
+      </select>
+      <div id="qTypeFields"></div>
       <label>Marks</label><input type="number" id="qMarks" value="5">
       <label>Difficulty</label><select id="qDiff"><option>Easy</option><option selected>Medium</option><option>Hard</option></select>
-      <label>Model answer (optional)</label><textarea id="qAnswer" rows="3"></textarea>
+      <label>Model answer / explanation (optional)</label><textarea id="qAnswer" rows="3"></textarea>
       <label>Topic</label><select id="qTopic">${topicOptions(topicId)}</select>
       <div class="modal-actions"><button class="btn secondary" onclick="Modal.close()">Cancel</button><button class="btn" onclick="Questions.create()">Save</button></div>`);
+    setTimeout(() => Questions.onTypeChange(), 30);
+  },
+  onTypeChange() {
+    const type = document.getElementById('qType')?.value;
+    const el = document.getElementById('qTypeFields'); if (!el) return;
+    if (type === 'MCQ') {
+      el.innerHTML = `<label>Options (select the correct one)</label>
+        ${[0, 1, 2, 3].map(i => `<div style="display:flex;gap:6px;align-items:center;margin-bottom:4px;">
+          <input type="radio" name="qCorrectOpt" value="${i}" ${i === 0 ? 'checked' : ''}>
+          <input type="text" id="qOpt${i}" placeholder="Option ${i + 1}" style="flex:1;">
+        </div>`).join('')}`;
+    } else if (type === 'True/False') {
+      el.innerHTML = `<label>Correct answer</label><select id="qTFAnswer"><option value="True">True</option><option value="False">False</option></select>`;
+    } else if (type === 'Fill in the Blank') {
+      el.innerHTML = `<label>Correct answer text</label><input type="text" id="qFIBAnswer" placeholder="Exact expected answer">`;
+    } else {
+      el.innerHTML = '';
+    }
   },
   async create() {
     const questionText = document.getElementById('qText').value.trim(); if (!questionText) return;
+    const type = document.getElementById('qType').value;
     const topicId = document.getElementById('qTopic').value;
     const topic = (Cache.topics || []).find(t => t.id === topicId);
     const chapter = topic ? (Cache.chapters || []).find(c => c.id === topic.chapterId) : null;
+    let extra = {};
+    if (type === 'MCQ') {
+      const options = [0, 1, 2, 3].map(i => document.getElementById('qOpt' + i)?.value.trim()).filter(Boolean);
+      const correctOptionIndex = parseInt(document.querySelector('input[name="qCorrectOpt"]:checked')?.value ?? '0');
+      extra = { options, correctOptionIndex };
+    } else if (type === 'True/False') {
+      extra = { correctAnswerText: document.getElementById('qTFAnswer').value };
+    } else if (type === 'Fill in the Blank') {
+      extra = { correctAnswerText: document.getElementById('qFIBAnswer').value.trim() };
+    }
     const q = await saveItem('questions', {
-      id: uid(), questionText, type: document.getElementById('qType').value, marks: parseInt(document.getElementById('qMarks').value) || 0,
+      id: uid(), questionText, type, marks: parseInt(document.getElementById('qMarks').value) || 0,
       difficulty: document.getElementById('qDiff').value, modelAnswer: document.getElementById('qAnswer').value.trim(),
       topicId, chapterId: chapter?.id, subjectId: chapter?.subjectId, status: 'not-attempted', personalAnswer: '',
-      createdAt: nowISO()
+      createdAt: nowISO(), ...extra
     });
     await Flashcards.generateForQuestion(q);
     Modal.close(); toast('Question saved · flashcard created'); Router.render();
@@ -648,14 +898,60 @@ const Questions = {
           <span class="subtle">${subjectName(q.subjectId)}</span>
         </div>
         <div class="subtle" style="margin-top:4px;">🃏 ${fc && fc.nextDate ? 'Next revision: ' + fmtDateShort(fc.nextDate) : 'Flashcard not yet reviewed'}</div>
-        <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">
-          <button class="btn sm secondary" onclick="Questions.toggleAnswer('${q.id}')">Reveal answer</button>
-          <button class="btn sm secondary" onclick="Questions.setStatus('${q.id}','correct')">Mark correct</button>
-          <button class="btn sm secondary" onclick="Questions.setStatus('${q.id}','incorrect')">Mark incorrect</button>
-          <button class="btn sm secondary" onclick="Questions.remove('${q.id}')">Delete</button>
-        </div>
+        ${Questions.answerAreaHTML(q)}
         <div id="ans-${q.id}" style="display:none;margin-top:8px;padding:8px;background:var(--bg);border-radius:8px;">${esc(q.modelAnswer) || '<span class="subtle">No model answer recorded.</span>'}</div>
       </div>`; }).join('')}`;
+  },
+  answerAreaHTML(q) {
+    if (q.type === 'MCQ' && q.options && q.options.length) {
+      return `<div style="margin-top:8px;">
+        ${q.options.map((opt, i) => `<label style="display:flex;gap:6px;align-items:center;margin-bottom:4px;">
+          <input type="radio" name="mcq-${q.id}" value="${i}"> ${esc(opt)}</label>`).join('')}
+        <button class="btn sm secondary" onclick="Questions.checkMCQ('${q.id}')">Check answer</button>
+        <button class="btn sm secondary" onclick="Questions.remove('${q.id}')">Delete</button>
+      </div>`;
+    }
+    if (q.type === 'True/False') {
+      return `<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">
+        <button class="btn sm secondary" onclick="Questions.checkTF('${q.id}','True')">True</button>
+        <button class="btn sm secondary" onclick="Questions.checkTF('${q.id}','False')">False</button>
+        <button class="btn sm secondary" onclick="Questions.remove('${q.id}')">Delete</button>
+      </div>`;
+    }
+    if (q.type === 'Fill in the Blank') {
+      return `<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">
+        <input type="text" id="fib-${q.id}" placeholder="Your answer" style="flex:1;min-width:140px;">
+        <button class="btn sm secondary" onclick="Questions.checkFIB('${q.id}')">Check</button>
+        <button class="btn sm secondary" onclick="Questions.remove('${q.id}')">Delete</button>
+      </div>`;
+    }
+    return `<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">
+      <button class="btn sm secondary" onclick="Questions.toggleAnswer('${q.id}')">Reveal answer</button>
+      <button class="btn sm secondary" onclick="Questions.setStatus('${q.id}','correct')">Mark correct</button>
+      <button class="btn sm secondary" onclick="Questions.setStatus('${q.id}','incorrect')">Mark incorrect</button>
+      <button class="btn sm secondary" onclick="Questions.remove('${q.id}')">Delete</button>
+    </div>`;
+  },
+  checkMCQ(id) {
+    const q = Cache.questions.find(x => x.id === id);
+    const sel = document.querySelector(`input[name="mcq-${id}"]:checked`);
+    if (!sel) { toast('Pick an option first'); return; }
+    const correct = parseInt(sel.value) === q.correctOptionIndex;
+    Questions.setStatus(id, correct ? 'correct' : 'incorrect');
+    toast(correct ? '✅ Correct!' : `❌ Correct answer: ${q.options[q.correctOptionIndex]}`);
+  },
+  checkTF(id, ans) {
+    const q = Cache.questions.find(x => x.id === id);
+    const correct = ans === q.correctAnswerText;
+    Questions.setStatus(id, correct ? 'correct' : 'incorrect');
+    toast(correct ? '✅ Correct!' : `❌ Correct answer: ${q.correctAnswerText}`);
+  },
+  checkFIB(id) {
+    const q = Cache.questions.find(x => x.id === id);
+    const val = (document.getElementById('fib-' + id).value || '').trim().toLowerCase();
+    const correct = val === (q.correctAnswerText || '').trim().toLowerCase();
+    Questions.setStatus(id, correct ? 'correct' : 'incorrect');
+    toast(correct ? '✅ Correct!' : `❌ Correct answer: ${q.correctAnswerText}`);
   },
   toggleAnswer(id) { const el = document.getElementById('ans-' + id); el.style.display = el.style.display === 'none' ? 'block' : 'none'; }
 };
@@ -683,7 +979,7 @@ const Bookmarks = {
 };
 
 /* ============================== PDF LIBRARY ============================== */
-let pdfDocCache = null, pdfCurrentPage = 1, pdfScale = 1.2, pdfPageObj = null, pdfStickyMode = false;
+let pdfDocCache = null, pdfCurrentPage = 1, pdfScale = 1.2, pdfPageObj = null, pdfStickyMode = false, pdfSplitMode = false, pdfSplitNoteId = null;
 
 /* Minimal selectable text layer, built the same way pdf.js's own viewer does:
    one absolutely-positioned, transparent span per text item, sized/rotated
@@ -717,14 +1013,25 @@ const Pdfs = {
     const file = input.files[0]; if (!file) return;
     if (file.type !== 'application/pdf') { toast('Please choose a PDF file'); return; }
     const buf = await file.arrayBuffer();
-    const rec = { id: uid(), filename: file.name, title: file.name.replace(/\.pdf$/i, ''), blob: buf, subjectId: '', pageCount: 0, createdAt: nowISO() };
-    try {
-      const doc = await pdfjsLib.getDocument({ data: buf.slice(0) }).promise;
-      rec.pageCount = doc.numPages;
-    } catch (e) { console.warn('pdf parse warning', e); }
-    await saveItem('pdfs', rec);
+    let pageCount = 0;
+    try { const doc = await pdfjsLib.getDocument({ data: buf.slice(0) }).promise; pageCount = doc.numPages; }
+    catch (e) { console.warn('pdf parse warning', e); }
     input.value = '';
-    toast('PDF imported'); Router.render();
+    Pdfs._pendingUpload = { filename: file.name, buf, pageCount };
+    Modal.open('Import PDF', `
+      <label>Title</label><input type="text" id="mPdfTitle" value="${esc(file.name.replace(/\.pdf$/i, ''))}">
+      <label>Subject (optional — powers related-content links)</label>
+      <select id="mPdfSubject"><option value="">— None —</option>${subjectOptions()}</select>
+      <div class="modal-actions"><button class="btn secondary" onclick="Modal.close()">Cancel</button>
+      <button class="btn" onclick="Pdfs.finishUpload()">Import</button></div>`);
+  },
+  async finishUpload() {
+    const p = Pdfs._pendingUpload; if (!p) return;
+    const title = document.getElementById('mPdfTitle').value.trim() || p.filename;
+    const subjectId = document.getElementById('mPdfSubject').value;
+    await saveItem('pdfs', { id: uid(), filename: p.filename, title, subjectId, pageCount: p.pageCount, blob: p.buf, createdAt: nowISO() });
+    Pdfs._pendingUpload = null;
+    Modal.close(); toast('PDF imported'); Router.render();
   },
   async remove(id) { if (!confirm('Move this PDF to Trash?')) return; await trashItem('pdfs', id); Router.render(); },
   renderLibrary() {
@@ -744,6 +1051,7 @@ const Pdfs = {
     const rec = Cache.pdfs.find(p => p.id === id);
     if (!rec) return `<div class="empty-state"><h3>PDF not found</h3></div>`;
     setTimeout(() => Pdfs.load(rec), 30);
+    pdfSplitMode = false; pdfSplitNoteId = null;
     return `
     <div style="display:flex;flex-direction:column;height:calc(100vh - 54px);margin:-24px -28px;">
       <div class="pdf-toolbar">
@@ -756,6 +1064,7 @@ const Pdfs = {
         <button class="icon-btn" onclick="Pdfs.zoom(0.15)">+</button>
         <button class="icon-btn" onclick="Pdfs.bookmarkPage('${id}')">🔖 Bookmark page</button>
         <button class="icon-btn" id="stickyBtn" onclick="Pdfs.toggleStickyMode()">📌 Sticky note</button>
+        <button class="icon-btn" id="splitBtn" onclick="Pdfs.toggleSplit()">📝 Split with Notes</button>
         <span class="subtle" style="font-size:11.5px;">Select text to highlight/underline</span>
       </div>
       <div style="display:flex;flex:1;overflow:hidden;">
@@ -766,7 +1075,7 @@ const Pdfs = {
             <div class="pdf-hl-overlay" id="pdfHlOverlay"></div>
           </div>
         </div>
-        <div style="width:220px;border-left:1px solid var(--border);padding:12px;overflow-y:auto;background:var(--bg-elev);" id="pdfSidePanel">
+        <div style="width:220px;border-left:1px solid var(--border);padding:12px;overflow-y:auto;background:var(--bg-elev);flex-shrink:0;" id="pdfRightPanel">
           ${Pdfs.sidePanelHTML(id)}
         </div>
       </div>
@@ -937,7 +1246,8 @@ const Pdfs = {
     });
   },
   refreshSidePanel() {
-    const el = document.getElementById('pdfSidePanel');
+    if (pdfSplitMode) return; // notes panel is independent of per-page data; leave it alone
+    const el = document.getElementById('pdfRightPanel');
     if (el) el.innerHTML = Pdfs.sidePanelHTML(UI.params.id);
   },
   sidePanelHTML(pdfId) {
@@ -949,7 +1259,58 @@ const Pdfs = {
       <h4 style="font-size:12px;text-transform:uppercase;color:var(--text-dim);margin-top:14px;">Bookmarked pages</h4>
       ${bookmarks.length ? bookmarks.map(b => `<div class="subtle" style="cursor:pointer;padding:4px 0;" onclick="Pdfs.goToPage(${b.page})">📍 Page ${b.page} ${b.label ? '— ' + esc(b.label) : ''}</div>`).join('') : '<div class="subtle">None yet.</div>'}
     `;
-  }
+  },
+
+  /* ---- split view: take notes alongside the PDF without losing your page/zoom state ---- */
+  toggleSplit() {
+    pdfSplitMode = !pdfSplitMode;
+    document.getElementById('splitBtn')?.classList.toggle('active-toggle', pdfSplitMode);
+    const panel = document.getElementById('pdfRightPanel'); if (!panel) return;
+    panel.style.width = pdfSplitMode ? '380px' : '220px';
+    panel.innerHTML = pdfSplitMode ? Pdfs.splitNotesHTML() : Pdfs.sidePanelHTML(UI.params.id);
+  },
+  splitNotesHTML() {
+    const pdfId = UI.params.id;
+    const pdf = Cache.pdfs.find(p => p.id === pdfId);
+    const relatedNotes = (Cache.notes || []).filter(n => pdf && pdf.subjectId && n.subjectId === pdf.subjectId);
+    if (!pdfSplitNoteId) {
+      return `<h4 style="margin-top:0;font-size:12px;text-transform:uppercase;color:var(--text-dim);">Notes while reading</h4>
+        <label>Pick a note for this subject</label>
+        <select onchange="Pdfs.pickSplitNote(this.value)">
+          <option value="">— Choose a note —</option>
+          ${relatedNotes.map(n => `<option value="${n.id}">${esc(n.title)}</option>`).join('')}
+        </select>
+        <button class="btn sm" style="margin-top:8px;" onclick="Pdfs.createSplitNote()">+ New note</button>
+        ${!pdf?.subjectId ? '<div class="subtle" style="margin-top:8px;">Tip: assign this PDF a subject (re-import, or edit later) so its notes list here automatically.</div>' : ''}`;
+    }
+    const n = Cache.notes.find(x => x.id === pdfSplitNoteId);
+    if (!n) { pdfSplitNoteId = null; return Pdfs.splitNotesHTML(); }
+    return `<div style="display:flex;justify-content:space-between;align-items:center;">
+        <b style="font-size:13px;">${esc(n.title)}</b>
+        <button class="icon-btn" onclick="Pdfs.pickSplitNote('')" title="Change note" aria-label="Change note">↺</button>
+      </div>
+      <div class="editor-body" id="splitEditorBody" contenteditable="true" aria-label="Split note content"
+        style="min-height:calc(100vh - 240px);font-size:14px;margin-top:8px;" oninput="Pdfs.onSplitEdit()">${n.content}</div>
+      <div class="save-status" id="splitSaveStatus" style="margin-top:4px;">Saved</div>`;
+  },
+  pickSplitNote(id) { pdfSplitNoteId = id || null; const panel = document.getElementById('pdfRightPanel'); if (panel) panel.innerHTML = Pdfs.splitNotesHTML(); },
+  async createSplitNote() {
+    const pdf = Cache.pdfs.find(p => p.id === UI.params.id);
+    const title = prompt('Note title?', pdf ? pdf.title + ' — notes' : 'PDF notes'); if (!title) return;
+    const note = await saveItem('notes', {
+      id: uid(), title, topicId: '', chapterId: '', subjectId: pdf?.subjectId || '', content: '<p></p>',
+      tags: [], importance: 3, examFrequency: 'medium', status: 'new', createdAt: nowISO(), revision: { stage: -1, nextDate: null }
+    });
+    pdfSplitNoteId = note.id;
+    const panel = document.getElementById('pdfRightPanel'); if (panel) panel.innerHTML = Pdfs.splitNotesHTML();
+  },
+  onSplitEdit: debounce(async function () {
+    const st = document.getElementById('splitSaveStatus'); if (st) st.textContent = 'Saving…';
+    const n = Cache.notes.find(x => x.id === pdfSplitNoteId); if (!n) return;
+    n.content = document.getElementById('splitEditorBody').innerHTML;
+    await saveItem('notes', n);
+    if (st) st.textContent = 'Saved';
+  }, 600)
 };
 
 /* ============================== SEARCH / COMMAND PALETTE ============================== */
@@ -967,6 +1328,7 @@ const Commands = [
   { label: 'Last-Minute Revision', icon: '⚡', kind: 'Go to', run: () => { CmdK.close(); UI.nav('lmr'); } },
   { label: 'Focus Mode / Study Timer', icon: '⏱', kind: 'Go to', run: () => { CmdK.close(); UI.nav('focus'); } },
   { label: 'Open Dashboard', icon: '🏠', kind: 'Go to', run: () => { CmdK.close(); UI.nav('dashboard'); } },
+  { label: 'Open Search & Filters', icon: '🔍', kind: 'Go to', run: () => { CmdK.close(); UI.nav('search'); } },
   { label: 'Open PDF Library', icon: '📄', kind: 'Go to', run: () => { CmdK.close(); UI.nav('pdfs'); } },
   { label: 'Open Questions', icon: '❓', kind: 'Go to', run: () => { CmdK.close(); UI.nav('questions'); } },
   { label: 'Open Mnemonics', icon: '🧠', kind: 'Go to', run: () => { CmdK.close(); UI.nav('mnemonics'); } },
@@ -1016,10 +1378,12 @@ const CmdK = {
     }
     this._results = results;
     const el = document.getElementById('cmdkResults'); if (!el) return;
-    el.innerHTML = results.length ? results.map((r, i) => r.isCommand
+    const more = query && Search.run(query).length > 20
+      ? `<div class="cmdk-item" onclick="CmdK.close();UI.nav('search',{q:'${esc(query).replace(/'/g, "\\'")}'});"><span>🔎 Open full Search page for "${esc(query)}"</span><small>Filters & sort</small></div>` : '';
+    el.innerHTML = (results.length ? results.map((r, i) => r.isCommand
       ? `<div class="cmdk-item" onclick="CmdK.runCommand(${i})"><span>${r.icon} ${esc(r.label)}</span><small>${esc(r.kind)}</small></div>`
       : `<div class="cmdk-item" onclick="CmdK.go('${r.route}','${r.id}')"><span>${r.icon} ${esc(r.title)}</span><small>${r.type}</small></div>`
-    ).join('') : `<div class="cmdk-item subtle">No matches</div>`;
+    ).join('') : `<div class="cmdk-item subtle">No matches</div>`) + more;
   },
   runCommand(i) { const r = this._results[i]; if (r && r.run) r.run(); },
   go(route, id) { CmdK.close(); UI.nav(route, { id }); }
@@ -1034,6 +1398,58 @@ const Search = {
     (Cache.jargons || []).forEach(j => { if (!q || (j.term + j.meaning).toLowerCase().includes(q)) out.push({ icon: '🔤', title: j.term, type: 'Jargon', route: 'jargons', id: j.id }); });
     (Cache.questions || []).forEach(qq => { if (!q || qq.questionText.toLowerCase().includes(q)) out.push({ icon: '❓', title: qq.questionText.slice(0, 60), type: 'Question', route: 'questions', id: qq.id }); });
     return out;
+  }
+};
+
+/* Full search page — filters (type, subject) and sorting, vs. the CmdK popup
+   which is optimized for speed over one or two keystrokes. */
+const SearchView = {
+  query: '', typeFilter: '', subjectFilter: '', sortBy: 'relevance',
+  render(q) {
+    if (typeof q === 'string') this.query = q;
+    return `<h2>Search</h2>
+      <div class="card" style="margin-bottom:16px;max-width:640px;">
+        <label>Query</label><input type="text" id="searchQ" value="${esc(this.query)}" oninput="SearchView.onInput(this.value)" placeholder="Search notes, PDFs, mnemonics, jargons, questions…">
+        <div class="note-meta-row" style="margin-top:10px;">
+          <select onchange="SearchView.typeFilter=this.value;SearchView.refresh()">
+            <option value="">All types</option>
+            ${['Note', 'PDF', 'Mnemonic', 'Jargon', 'Question'].map(t => `<option value="${t}" ${this.typeFilter === t ? 'selected' : ''}>${t}</option>`).join('')}
+          </select>
+          <select onchange="SearchView.subjectFilter=this.value;SearchView.refresh()">
+            <option value="">All subjects</option>${subjectOptions(this.subjectFilter)}
+          </select>
+          <select onchange="SearchView.sortBy=this.value;SearchView.refresh()">
+            <option value="relevance" ${this.sortBy === 'relevance' ? 'selected' : ''}>Sort: Relevance</option>
+            <option value="newest" ${this.sortBy === 'newest' ? 'selected' : ''}>Sort: Newest</option>
+            <option value="alpha" ${this.sortBy === 'alpha' ? 'selected' : ''}>Sort: Alphabetical</option>
+          </select>
+        </div>
+      </div>
+      <div id="searchResultsWrap">${this.resultsHTML()}</div>`;
+  },
+  onInput: debounce(function (v) { SearchView.query = v; SearchView.refresh(); }, 200),
+  refresh() { const el = document.getElementById('searchResultsWrap'); if (el) el.innerHTML = this.resultsHTML(); },
+  itemSubjectId(r) {
+    if (r.type === 'Note') return Cache.notes.find(x => x.id === r.id)?.subjectId;
+    if (r.type === 'PDF') return Cache.pdfs.find(x => x.id === r.id)?.subjectId;
+    if (r.type === 'Jargon') return Cache.jargons.find(x => x.id === r.id)?.subjectId;
+    if (r.type === 'Question') return Cache.questions.find(x => x.id === r.id)?.subjectId;
+    if (r.type === 'Mnemonic') { const m = Cache.mnemonics.find(x => x.id === r.id); return m ? topicSubjectId(m.topicId) : ''; }
+    return '';
+  },
+  itemDate(r) {
+    const stores = { Note: 'notes', PDF: 'pdfs', Jargon: 'jargons', Question: 'questions', Mnemonic: 'mnemonics' };
+    const obj = (Cache[stores[r.type]] || []).find(x => x.id === r.id);
+    return obj ? (obj.updatedAt || obj.createdAt) : null;
+  },
+  resultsHTML() {
+    let results = Search.run(this.query);
+    if (this.typeFilter) results = results.filter(r => r.type === this.typeFilter);
+    if (this.subjectFilter) results = results.filter(r => this.itemSubjectId(r) === this.subjectFilter);
+    if (this.sortBy === 'alpha') results = [...results].sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+    else if (this.sortBy === 'newest') results = [...results].sort((a, b) => new Date(this.itemDate(b) || 0) - new Date(this.itemDate(a) || 0));
+    return `<div class="subtle" style="margin-bottom:8px;">${results.length} result${results.length === 1 ? '' : 's'}</div>
+      ${results.length ? results.map(r => `<div class="list-row" onclick="UI.nav('${r.route}',{id:'${r.id}'})"><span>${r.icon}</span><div style="flex:1;">${esc(r.title)}</div><span class="pill">${r.type}</span></div>`).join('') : `<div class="subtle">No results.</div>`}`;
   }
 };
 
@@ -1115,7 +1531,7 @@ const ExamMode = {
     clearInterval(this.timerInterval);
     const q = this.queue[this.index];
     this.timerSeconds = Math.max(30, Math.round((q.marks || 5) * this.minPerMark * 60));
-    this.graded = false; this.answer = '';
+    this.graded = false; this.answer = ''; this.autoVerdict = null;
     this.timerInterval = setInterval(() => {
       this.timerSeconds--;
       const d = document.getElementById('examTimerDisplay');
@@ -1135,9 +1551,37 @@ const ExamMode = {
         <div class="timer-display" id="examTimerDisplay" style="font-size:40px;margin:10px 0;">${this.fmtTime()}</div>
         <div class="card" style="max-width:640px;">
           <div style="display:flex;justify-content:space-between;gap:10px;"><b>${esc(q.questionText)}</b><span class="pill">${q.marks} marks</span></div>
-          <label>Your answer</label>
-          <textarea id="examAnswerBox" rows="6" oninput="ExamMode.answer=this.value">${esc(this.answer)}</textarea>
+          ${this.answerInputHTML(q)}
           <button class="btn" style="margin-top:10px;" onclick="ExamMode.submit()">Submit</button>
+        </div>`;
+    }
+    return this.gradedViewHTML(q);
+  },
+  answerInputHTML(q) {
+    if (q.type === 'MCQ' && q.options?.length) {
+      return q.options.map((opt, i) => `<label style="display:flex;gap:6px;align-items:center;margin:6px 0;">
+        <input type="radio" name="examMcq" value="${i}"> ${esc(opt)}</label>`).join('');
+    }
+    if (q.type === 'True/False') {
+      return `<div style="display:flex;gap:14px;margin-top:8px;">
+        <label><input type="radio" name="examTF" value="True"> True</label>
+        <label><input type="radio" name="examTF" value="False"> False</label></div>`;
+    }
+    if (q.type === 'Fill in the Blank') {
+      return `<label>Your answer</label><input type="text" id="examFIB">`;
+    }
+    return `<label>Your answer</label><textarea id="examAnswerBox" rows="6" oninput="ExamMode.answer=this.value">${esc(this.answer)}</textarea>`;
+  },
+  gradedViewHTML(q) {
+    if (this.autoVerdict) {
+      const correctText = q.type === 'MCQ' ? q.options[q.correctOptionIndex] : q.correctAnswerText;
+      return `<div class="subtle">Question ${this.index + 1} of ${this.queue.length}</div>
+        <div class="card" style="max-width:640px;">
+          <b>${esc(q.questionText)}</b>
+          <hr class="sep">
+          <div class="pill ${this.autoVerdict === 'correct' ? '' : 'warn'}">${this.autoVerdict === 'correct' ? '✅ Correct' : '❌ Incorrect'}</div>
+          <div class="subtle" style="margin-top:8px;">Your answer: ${esc(this.answer) || '(none)'}<br>Correct answer: ${esc(correctText || '')}</div>
+          <button class="btn" style="margin-top:14px;" onclick="ExamMode.grade('${this.autoVerdict}')">Continue</button>
         </div>`;
     }
     return `<div class="subtle">Question ${this.index + 1} of ${this.queue.length}</div>
@@ -1158,6 +1602,21 @@ const ExamMode = {
   },
   submit() {
     clearInterval(this.timerInterval);
+    const q = this.queue[this.index];
+    if (q.type === 'MCQ') {
+      const sel = document.querySelector('input[name="examMcq"]:checked');
+      this.answer = sel ? q.options[parseInt(sel.value)] : '';
+      this.autoVerdict = sel && parseInt(sel.value) === q.correctOptionIndex ? 'correct' : 'incorrect';
+    } else if (q.type === 'True/False') {
+      const sel = document.querySelector('input[name="examTF"]:checked');
+      this.answer = sel ? sel.value : '';
+      this.autoVerdict = sel && sel.value === q.correctAnswerText ? 'correct' : 'incorrect';
+    } else if (q.type === 'Fill in the Blank') {
+      this.answer = document.getElementById('examFIB')?.value || '';
+      this.autoVerdict = this.answer.trim().toLowerCase() === (q.correctAnswerText || '').trim().toLowerCase() ? 'correct' : 'incorrect';
+    } else {
+      this.autoVerdict = null;
+    }
     this.graded = true;
     Router.render();
   },
@@ -1399,25 +1858,25 @@ const Dashboard = {
     if (!Cache.courses.length) {
       return emptyState('📘', 'Create your first course to start building your CA study workspace.', 'Create Course', 'Courses.promptNew()');
     }
+    const dateStr = new Date().toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
     return `
-    <h2 style="margin-bottom:2px;">${greeting}, Varun</h2>
-    <p class="subtle" style="margin-top:0;">Let's continue your CA preparation.</p>
-    <div class="grid cols-3" style="margin:18px 0;">
-      <div class="card"><div class="subtle">Today's study time</div><h2 style="margin:6px 0;">${todayMins} min</h2></div>
-      <div class="card"><div class="subtle">Notes created</div><h2 style="margin:6px 0;">${notes.length}</h2></div>
-      <div class="card"><div class="subtle">Revision due today</div><h2 style="margin:6px 0;">${due.length}</h2></div>
+    <div class="ledger-hero">
+      <p class="ledger-date">${dateStr}</p>
+      <h2 class="ledger-greeting">${greeting}. Here's today's entry.</h2>
+      <div class="ledger-rows">
+        <div class="ledger-row"><span class="lr-label">Study time logged today</span><span class="lr-leader"></span><span class="lr-value">${todayMins} min</span></div>
+        <div class="ledger-row"><span class="lr-label">Notes in the ledger</span><span class="lr-leader"></span><span class="lr-value">${notes.length}</span></div>
+        <div class="ledger-row"><span class="lr-label">Revision due today</span><span class="lr-leader"></span><span class="lr-value ${due.length ? 'flag' : ''}">${due.length}</span></div>
+      </div>
+      ${due.length ? `<div style="margin-top:16px;"><button class="btn sm" onclick="UI.nav('revision')">Start Revision</button></div>` : ''}
     </div>
-    ${due.length ? `<div class="card" style="margin-bottom:18px;background:var(--accent-soft);border:none;">
-      <b>${due.length} topics due for revision</b>
-      <div style="margin-top:8px;"><button class="btn sm" onclick="UI.nav('revision')">Start Revision</button></div>
-    </div>` : ''}
     <h3>Continue studying</h3>
     ${recentNotes.length ? recentNotes.map(n => `<div class="list-row" onclick="UI.nav('note',{id:'${n.id}'})">
       <span>📝</span><div style="flex:1;">${esc(n.title)}<div class="subtle">${subjectName(n.subjectId)} · updated ${fmtDateShort(n.updatedAt || n.createdAt)}</div></div>
     </div>`).join('') : `<div class="subtle">No notes yet — create your first one.</div>`}
     <h3 style="margin-top:22px;">Subject progress</h3>
     ${progress.length ? progress.map(p => `<div style="margin-bottom:10px;">
-      <div style="display:flex;justify-content:space-between;font-size:13.5px;"><span>${esc(p.subject.name)}</span><span class="subtle">${p.pct}%</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:13.5px;"><span>${esc(p.subject.name)}</span><span class="subtle" style="font-family:var(--mono);">${p.pct}%</span></div>
       <div class="progress-bar"><div style="width:${p.pct}%"></div></div>
     </div>`).join('') : `<div class="subtle">Add subjects to a course to see progress.</div>`}
     <h3 style="margin-top:22px;">Quick actions</h3>
@@ -1435,9 +1894,11 @@ function TopicView(id) {
   const topic = (Cache.topics || []).find(t => t.id === id);
   if (!topic) return `<div class="empty-state"><h3>Topic not found</h3></div>`;
   const chapter = (Cache.chapters || []).find(c => c.id === topic.chapterId);
-  const notes = (Cache.notes || []).filter(n => n.topicId === id);
+  const notes = (Cache.notes || []).filter(n => n.topicId === id).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   const mnemonics = (Cache.mnemonics || []).filter(m => m.topicId === id);
   const questions = (Cache.questions || []).filter(q => q.topicId === id);
+  const relatedJargons = (Cache.jargons || []).filter(j => chapter && j.subjectId === chapter.subjectId);
+  const relatedPdfs = (Cache.pdfs || []).filter(p => chapter && p.subjectId === chapter.subjectId);
   return `
   <div class="subtle">${subjectName(chapter?.subjectId)} › ${esc(chapter?.name || '')}</div>
   <h2 style="margin-top:2px;">${esc(topic.name)}</h2>
@@ -1446,12 +1907,18 @@ function TopicView(id) {
     <button class="btn sm secondary" onclick="Mnemonics.promptNew('${id}')">+ Mnemonic</button>
     <button class="btn sm secondary" onclick="Questions.promptNew('${id}')">+ Question</button>
   </div>
-  <h3>Notes</h3>
-  ${notes.length ? notes.map(n => `<div class="list-row" onclick="UI.nav('note',{id:'${n.id}'})"><span>📝</span><div style="flex:1;">${esc(n.title)}</div></div>`).join('') : `<div class="subtle">No notes yet.</div>`}
+  <h3>Notes <span class="subtle" style="font-weight:normal;font-size:12px;">(drag to reorder)</span></h3>
+  ${notes.length ? notes.map(n => `<div class="list-row" draggable="true"
+      ondragstart="Tree.dragStart(event,'note','${n.id}')" ondragover="Tree.allowDrop(event)"
+      ondrop="Tree.onDrop(event,'note','notes','topicId','${id}','${n.id}')"
+      onclick="UI.nav('note',{id:'${n.id}'})"><span>📝</span><div style="flex:1;">${esc(n.title)}</div></div>`).join('') : `<div class="subtle">No notes yet.</div>`}
   <h3 style="margin-top:18px;">Mnemonics</h3>
   ${mnemonics.length ? mnemonics.map(m => `<div class="card" style="margin-bottom:8px;"><b>${esc(m.title)}</b> — <span class="pill">${esc(m.mnemonicText)}</span></div>`).join('') : `<div class="subtle">None yet.</div>`}
   <h3 style="margin-top:18px;">Questions</h3>
   ${questions.length ? questions.map(q => `<div class="subtle" style="margin-bottom:6px;">❓ ${esc(q.questionText)}</div>`).join('') : `<div class="subtle">None yet.</div>`}
+  ${(relatedJargons.length || relatedPdfs.length) ? `<h3 style="margin-top:18px;">Related (same subject)</h3>
+  ${relatedJargons.map(j => `<div class="subtle" style="cursor:pointer;" onclick="UI.nav('jargons')">🔤 ${esc(j.term)}</div>`).join('')}
+  ${relatedPdfs.map(p => `<div class="subtle" style="cursor:pointer;" onclick="UI.nav('pdf',{id:'${p.id}'})">📄 ${esc(p.title)}</div>`).join('')}` : ''}
   `;
 }
 
@@ -1462,6 +1929,7 @@ const Router = {
     let html = '';
     switch (UI.route) {
       case 'dashboard': html = Dashboard.render(); break;
+      case 'search': html = SearchView.render(UI.params.q || ''); break;
       case 'topic': html = TopicView(UI.params.id); break;
       case 'note': html = Notes.render(UI.params.id); break;
       case 'pdfs': html = Pdfs.renderLibrary(); break;
@@ -1514,12 +1982,33 @@ async function seedIfEmpty() {
   await loadAllToCache();
 }
 
+/* ============================== FOCUS MODE (DARK ROOM) ============================== */
+const Focus = {
+  active: false,
+  enter() {
+    this.active = true;
+    document.body.classList.add('focus-mode');
+    if (!document.getElementById('focusExitBtn')) {
+      const btn = document.createElement('button');
+      btn.id = 'focusExitBtn'; btn.className = 'btn secondary focus-exit-btn';
+      btn.textContent = '✕ Exit Focus (Esc)';
+      btn.onclick = () => Focus.exit();
+      document.body.appendChild(btn);
+    }
+  },
+  exit() {
+    this.active = false;
+    document.body.classList.remove('focus-mode');
+    document.getElementById('focusExitBtn')?.remove();
+  }
+};
+
 /* ============================== KEYBOARD SHORTCUTS ============================== */
 document.addEventListener('keydown', (e) => {
   const mod = e.metaKey || e.ctrlKey;
   if (mod && e.key.toLowerCase() === 'k') { e.preventDefault(); CmdK.open(); }
   else if (mod && e.key.toLowerCase() === 'n') { e.preventDefault(); Notes.promptNew(); }
-  else if (e.key === 'Escape') { CmdK.close(); Modal.close(); }
+  else if (e.key === 'Escape') { CmdK.close(); Modal.close(); if (Focus.active) Focus.exit(); }
 });
 
 /* ============================== BOOT ============================== */
