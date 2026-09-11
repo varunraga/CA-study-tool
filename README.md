@@ -50,10 +50,14 @@ Everything is stored locally in the browser's IndexedDB (database `castudy`) —
 - Mnemonics module (title, code, meaning, linked topic, favorite)
 - Jargons/keywords module (term, meaning, memory trick, importance)
 - Questions module (type, marks, difficulty, model answer, reveal/attempt tracking)
-- Spaced-repetition revision engine (configurable intervals, Again/Hard/Good/Easy rating) driving a Dashboard "due today" count and a flashcard-style Revision session mode
-- Global search + Command Palette (Ctrl/Cmd+K) across notes, PDFs, mnemonics, jargons, questions
-- PDF Library: upload, IndexedDB storage, PDF.js-based viewer with page navigation, zoom, and page bookmarks
+- **Auto-generated flashcards (step 2, just added)**: every Question and Mnemonic automatically gets a linked front/back flashcard the moment you create it (Question → front is the question, back is the model answer; Mnemonic → front asks for the code, back is the code + meaning). Deleting the source removes its flashcard too. Each Question/Mnemonic card shows its flashcard's next-revision date right on the list.
+- Spaced-repetition revision engine (configurable intervals, Again/Hard/Good/Easy rating) driving a Dashboard "due today" count and a flashcard-style Revision session mode — the queue is now Notes (rated from inside the note) + the auto-generated flashcard deck (Questions & Mnemonics), each clearly labeled by source in the session
+- Global search + Command Palette (Ctrl/Cmd+K) across notes, PDFs, mnemonics, jargons, questions — **plus typeable commands (step 4, just added)**: New Note, New Course, Import PDF, Add Mnemonic/Jargon/Question, Start Revision, Exam Mode, Last-Minute Revision, Focus Mode, jump to any section, Export Backup, Toggle Dark Mode, and a dynamic "Go to subject: X" command per subject you've created
+- PDF Library: upload, IndexedDB storage, PDF.js-based viewer with page navigation and zoom
+- **PDF annotation layer** (step 1, just added): select text on any page to highlight (6 colors) or underline it — stored as a separate layer keyed to page coordinates, so it re-renders correctly at any zoom and the original PDF file is never modified; sticky notes can be dropped anywhere on a page; both are listed per-page in a side panel and editable/deletable via a popover; page bookmarks remain available in the same panel
 - Bookmarks (notes, PDFs)
+- **Exam Mode (step 3, just added)**: pick a subject/difficulty, attempt each question one at a time under a per-question timer (minutes-per-mark, configurable), submit → see your answer next to the model answer → self-grade Correct / Partially Correct / Incorrect, which automatically reschedules that question's flashcard; ends in a summary (attempted / correct / needs-work) with every question listed
+- **Last-Minute Revision Mode (step 3, just added)**: rapid-fire, one-at-a-time stream through only your highest-priority content for a subject — ★4–5 importance notes, exam-important notes, difficult-status notes, must-memorize/important jargons, hard questions, and favorited mnemonics — each tagged with why it's there
 - Study Timer (25/5, 50/10, custom) with session logging
 - Trash / soft delete with restore, for notes/mnemonics/jargons/questions/PDFs
 - Full JSON backup export/import (PDFs excluded from JSON — they're large binary blobs; export them individually from the library if you need a copy outside the browser)
@@ -62,22 +66,23 @@ Everything is stored locally in the browser's IndexedDB (database `castudy`) —
 
 ## Known limitations (honestly, not glossed over)
 
-- **PDF annotation** (freehand drawing, highlighting text directly on a PDF page, shapes/arrows) is **not implemented** — the toolbar button says "Coming Soon" rather than pretending to work, per your instruction to never ship fake buttons. Page bookmarking works today; text-layer highlighting on PDFs is the natural next build.
+- **Freehand drawing / shapes / arrows on PDFs** are still not implemented — text highlighting, underlining, and sticky notes are (see above), but drawing arbitrary ink on the page is a separate, larger feature (canvas-based drawing layer + undo stack) not yet built.
 - **No cloud sync / multi-device** — this version is local-first only, matching the brief's "can work without a backend" requirement, but there's no Supabase/Firebase layer yet.
 - **No OCR** — scanned PDFs/images aren't made searchable.
 - **No AI features** — none were required for v1, and the code is small enough to add an `AIService` abstraction cleanly later (summarize/explain/generate-mnemonic/generate-flashcards, etc.) exactly as the brief specifies for Phase 5.
 - **No version history / undo-redo beyond the browser's native contenteditable undo** for notes.
 - **Rich text editor uses `document.execCommand`**, which is simple and reliable for this feature set but is a legacy browser API; a TipTap/ProseMirror-based editor (as originally specified) would be a natural upgrade if the note-taking needs grow more advanced (e.g. collaborative editing, custom node types).
 - **Export "Notes only" / "Highlights only" / burn-in annotated PDF export** from the original spec aren't built yet — only full JSON backup and individual PDF pages.
-- Flashcard "front/back" auto-generation from notes/mnemonics isn't automatic yet — flashcards currently ride on the same spaced-repetition engine as notes and questions directly, rather than a separate auto-generated deck.
 
 ## Recommended next steps, in priority order
 
-1. PDF-page annotation layer (highlight/underline/sticky-note anchored to page + coordinates, stored separately from the PDF so the original stays untouched — the data model for this is already sketched in the spec you gave me).
-2. Auto-generate flashcards from Q&A pairs and mnemonic front/backs.
-3. Exam Mode (timed question attempts with a dedicated submit → self-evaluate flow) and Last-Minute Revision Mode (filter to ★★★★★ / exam-important / must-memorize).
-4. Command palette actions beyond search (New Note, Toggle Theme, etc. as direct commands).
+1. ~~PDF-page annotation layer~~ — done.
+2. ~~Auto-generate flashcards from Q&A pairs and mnemonic front/backs~~ — done.
+3. ~~Exam Mode and Last-Minute Revision Mode~~ — done.
+4. ~~Command palette actions beyond search~~ — done.
 5. Cloud sync (Supabase is the lowest-friction option given the current local-first repository-style structure — each feature module already reads/writes through a single `saveItem(store, obj)` function, which is the seam to swap for a real backend later).
+
+All 5 of the originally-listed next steps are now built. See the "all 5 steps" conversation for the honest list of what's still outside scope (sticky-note-as-draggable-object, drag-and-drop reordering, note version history, Word/txt/md import, deeper analytics, related-content/knowledge-graph panel, richer export formats, search filters/sorting, Focus/Dark Room UI, PDF+notes split view, iPad split-screen, MCQ/True-False/Fill-in-blank answer UI, accessibility pass). Happy to turn that into a tracked backlog next if useful.
 
 ## Testing performed
 

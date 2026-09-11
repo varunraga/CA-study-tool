@@ -128,9 +128,19 @@ textarea{resize:vertical;}
 .inspector h4{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--text-dim);margin:0 0 8px;}
 
 /* PDF */
-.pdf-toolbar{display:flex;align-items:center;gap:10px;padding:8px 14px;border-bottom:1px solid var(--border);background:var(--bg-elev);}
+.pdf-toolbar{display:flex;align-items:center;gap:10px;padding:8px 14px;border-bottom:1px solid var(--border);background:var(--bg-elev);flex-wrap:wrap;}
 .pdf-canvas-wrap{flex:1;overflow:auto;text-align:center;background:#33322e;padding:20px;}
-.pdf-canvas-wrap canvas{box-shadow:0 4px 18px #0006;background:#fff;}
+.pdf-page-wrap{position:relative;display:inline-block;}
+.pdf-page-wrap canvas{box-shadow:0 4px 18px #0006;background:#fff;display:block;}
+.pdf-textlayer{position:absolute;top:0;left:0;overflow:hidden;line-height:1;}
+.pdf-textlayer span{position:absolute;white-space:pre;color:transparent;transform-origin:0 0;cursor:text;}
+.pdf-textlayer span::selection{background:#c9b98a77;}
+.pdf-hl-overlay{position:absolute;top:0;left:0;pointer-events:none;}
+.pdf-hl-rect{position:absolute;pointer-events:auto;cursor:pointer;border-radius:2px;mix-blend-mode:multiply;}
+html.dark .pdf-hl-rect{mix-blend-mode:normal;}
+.pdf-hl-rect.underline{background:none !important;border-bottom:3px solid var(--accent);border-radius:0;}
+.pdf-sticky-icon{position:absolute;width:22px;height:22px;background:var(--accent);color:var(--bg-elev);border-radius:50% 50% 50% 4px;display:flex;align-items:center;justify-content:center;font-size:11px;cursor:pointer;pointer-events:auto;transform:translate(-50%,-100%);box-shadow:0 2px 6px #0005;}
+.icon-btn.active-toggle{background:var(--accent);color:var(--bg-elev);}
 
 /* MOBILE */
 .bottom-nav{display:none;}
@@ -188,6 +198,8 @@ hr.sep{border:none;border-top:1px solid var(--border);margin:20px 0;}
       <button class="nav-item" data-route="pdfs" onclick="UI.nav('pdfs')">📄 PDF Library</button>
       <button class="nav-item" data-route="questions" onclick="UI.nav('questions')">❓ Questions</button>
       <button class="nav-item" data-route="revision" onclick="UI.nav('revision')">🔁 Revision <span class="badge" id="revBadge">0</span></button>
+      <button class="nav-item" data-route="exam" onclick="UI.nav('exam')">🎓 Exam Mode</button>
+      <button class="nav-item" data-route="lmr" onclick="UI.nav('lmr')">⚡ Last-Minute Revision</button>
       <button class="nav-item" data-route="mnemonics" onclick="UI.nav('mnemonics')">🧠 Mnemonics</button>
       <button class="nav-item" data-route="jargons" onclick="UI.nav('jargons')">🔤 Jargons</button>
       <button class="nav-item" data-route="bookmarks" onclick="UI.nav('bookmarks')">🔖 Bookmarks</button>
@@ -208,7 +220,7 @@ hr.sep{border:none;border-top:1px solid var(--border);margin:20px 0;}
   <div class="main">
     <div class="topbar">
       <button class="icon-btn" style="display:none" id="menuBtn" onclick="UI.toggleSidebar()">☰</button>
-      <input class="search-top" placeholder="Search everything…  (Ctrl/Cmd+K)" onclick="CmdK.open()" readonly>
+      <input class="search-top" placeholder="Search or run a command…  (Ctrl/Cmd+K)" onclick="CmdK.open()" readonly>
       <div class="spacer"></div>
       <button class="icon-btn" onclick="UI.newQuick()" title="Quick add">＋</button>
       <button class="icon-btn" onclick="Theme.toggle()" title="Toggle theme">🌓</button>

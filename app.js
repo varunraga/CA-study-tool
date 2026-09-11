@@ -12,6 +12,11 @@ const esc = (s) => (s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt
 const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
 const daysFromNow = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString(); };
 const isPastOrToday = (iso) => !iso || new Date(iso) <= new Date(new Date().toDateString() + ' 23:59:59');
+function stripHtml(html) {
+  const div = document.createElement('div');
+  div.innerHTML = html || '';
+  return (div.textContent || div.innerText || '').replace(/\s+/g, ' ').trim();
+}
 
 function toast(msg) {
   const wrap = document.getElementById('toastWrap');
@@ -238,6 +243,11 @@ const Tree = {
 function chapterName(id) { return (Cache.chapters || []).find(c => c.id === id)?.name || '—'; }
 function subjectName(id) { return (Cache.subjects || []).find(s => s.id === id)?.name || '—'; }
 function topicName(id) { return (Cache.topics || []).find(t => t.id === id)?.name || '—'; }
+function topicSubjectId(topicId) {
+  const t = (Cache.topics || []).find(x => x.id === topicId);
+  const c = t ? (Cache.chapters || []).find(x => x.id === t.chapterId) : null;
+  return c ? c.subjectId : '';
+}
 function subjectOptions(selected) {
   return (Cache.subjects || []).map(s => `<option value="${s.id}" ${s.id === selected ? 'selected' : ''}>${esc(s.name)}</option>`).join('');
 }
@@ -259,16 +269,18 @@ const Revision = {
   dueItems() {
     const items = [];
     (Cache.notes || []).forEach(n => { if (n.revision?.nextDate && isPastOrToday(n.revision.nextDate) && n.status !== 'mastered') items.push({ type: 'note', obj: n }); });
-    (Cache.questions || []).forEach(q => { if (q.revision?.nextDate && isPastOrToday(q.revision.nextDate)) items.push({ type: 'question', obj: q }); });
-    (Cache.flashcards || []).forEach(f => { if (f.nextDate && isPastOrToday(f.nextDate)) items.push({ type: 'flashcard', obj: f }); });
+    // Flashcards (auto-generated from Questions & Mnemonics) are due once their
+    // scheduled date arrives — and also the very first time, since a flashcard
+    // has no separate detail page to rate it from the way a note does.
+    (Cache.flashcards || []).forEach(f => { if (f.nextDate == null || isPastOrToday(f.nextDate)) items.push({ type: 'flashcard', obj: f }); });
     return items;
   },
   async rate(type, id, rating) {
     // rating: again|hard|good|easy
-    const store = type === 'note' ? 'notes' : type === 'question' ? 'questions' : 'flashcards';
+    const store = type === 'note' ? 'notes' : 'flashcards';
     const obj = Cache[store].find(x => x.id === id);
     if (!obj) return;
-    const key = type === 'flashcard' ? obj : obj.revision || (obj.revision = { stage: 0 });
+    if (type !== 'flashcard') obj.revision = obj.revision || { stage: 0 };
     let stage = (type === 'flashcard' ? obj.stage : obj.revision.stage) || 0;
     if (rating === 'again') stage = 0;
     else if (rating === 'hard') stage = Math.max(0, stage - 1);
@@ -277,7 +289,6 @@ const Revision = {
     const sched = this.schedule(stage);
     if (type === 'flashcard') { obj.stage = sched.stage; obj.nextDate = sched.nextDate; }
     else { obj.revision.stage = sched.stage; obj.revision.nextDate = sched.nextDate; obj.revision.history = obj.revision.history || []; obj.revision.history.push({ date: nowISO(), rating }); }
-    if (rating === 'again') { /* keep status */ } 
     await saveItem(store, obj);
     updateRevBadge();
   }
@@ -287,6 +298,35 @@ function updateRevBadge() {
   const b = document.getElementById('revBadge');
   if (b) { b.textContent = n; b.style.display = n ? 'inline-block' : 'none'; }
 }
+
+/* Auto-generated flashcards, kept in sync with their source Question/Mnemonic.
+   This is the "front/back" deck the spec asks for — Questions and Mnemonics
+   themselves no longer carry their own separate revision schedule. */
+const Flashcards = {
+  findFor(sourceType, sourceId) {
+    return (Cache.flashcards || []).find(f => f.sourceType === sourceType && f.sourceId === sourceId);
+  },
+  async generateForQuestion(q) {
+    const front = q.questionText;
+    const back = (q.modelAnswer && q.modelAnswer.trim()) ? q.modelAnswer : '(No model answer recorded)';
+    const existing = this.findFor('question', q.id);
+    if (existing) { existing.front = front; existing.back = back; return saveItem('flashcards', existing); }
+    return saveItem('flashcards', { id: uid(), front, back, sourceType: 'question', sourceId: q.id, stage: -1, nextDate: null, createdAt: nowISO() });
+  },
+  async generateForMnemonic(m) {
+    const front = `Mnemonic for "${m.title}"?`;
+    const back = `${m.mnemonicText}${m.meaning ? '\n' + m.meaning : ''}`;
+    const existing = this.findFor('mnemonic', m.id);
+    if (existing) { existing.front = front; existing.back = back; return saveItem('flashcards', existing); }
+    return saveItem('flashcards', { id: uid(), front, back, sourceType: 'mnemonic', sourceId: m.id, stage: -1, nextDate: null, createdAt: nowISO() });
+  },
+  async removeForSource(sourceType, sourceId) {
+    const fc = this.findFor(sourceType, sourceId);
+    if (!fc) return;
+    await DB.del('flashcards', fc.id);
+    Cache.flashcards = Cache.flashcards.filter(f => f.id !== fc.id);
+  }
+};
 
 /* ============================== NOTES ============================== */
 const Notes = {
@@ -487,31 +527,37 @@ const Mnemonics = {
   },
   async create() {
     const title = document.getElementById('mTitle').value.trim(); if (!title) return;
-    await saveItem('mnemonics', {
+    const m = await saveItem('mnemonics', {
       id: uid(), title, mnemonicText: document.getElementById('mCode').value.trim(),
       meaning: document.getElementById('mMeaning').value.trim(), topicId: document.getElementById('mTopic').value,
       tags: [], favorite: false, createdAt: nowISO()
     });
-    Modal.close(); toast('Mnemonic saved'); Router.render();
+    await Flashcards.generateForMnemonic(m);
+    Modal.close(); toast('Mnemonic saved · flashcard created'); Router.render();
   },
   async toggleFav(id) {
     const m = Cache.mnemonics.find(x => x.id === id); m.favorite = !m.favorite; await saveItem('mnemonics', m); Router.render();
   },
-  async remove(id) { if (!confirm('Delete this mnemonic?')) return; await trashItem('mnemonics', id); Router.render(); },
+  async remove(id) {
+    if (!confirm('Delete this mnemonic? Its flashcard will be removed too.')) return;
+    await Flashcards.removeForSource('mnemonic', id);
+    await trashItem('mnemonics', id); Router.render();
+  },
   render() {
     const items = Cache.mnemonics || [];
     if (!items.length) return emptyState('🧠', 'Build your memory bank.', 'Create Mnemonic', "Mnemonics.promptNew()");
     return `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
       <h2 style="margin:0;">Mnemonics</h2><button class="btn" onclick="Mnemonics.promptNew()">+ New Mnemonic</button></div>
-      <div class="grid cols-3">${items.map(m => `
+      <div class="grid cols-3">${items.map(m => { const fc = Flashcards.findFor('mnemonic', m.id); return `
       <div class="card">
         <div style="display:flex;justify-content:space-between;"><b>${esc(m.title)}</b>
         <span style="cursor:pointer;" onclick="Mnemonics.toggleFav('${m.id}')">${m.favorite ? '★' : '☆'}</span></div>
         <div class="pill" style="margin:6px 0;">${esc(m.mnemonicText)}</div>
         <div class="subtle" style="white-space:pre-line;">${esc(m.meaning)}</div>
         <div class="subtle" style="margin-top:8px;">Topic: ${topicName(m.topicId)}</div>
+        <div class="subtle">🃏 ${fc && fc.nextDate ? 'Next revision: ' + fmtDateShort(fc.nextDate) : 'Flashcard not yet reviewed'}</div>
         <div style="text-align:right;margin-top:8px;"><button class="btn sm secondary" onclick="Mnemonics.remove('${m.id}')">Delete</button></div>
-      </div>`).join('')}</div>`;
+      </div>`; }).join('')}</div>`;
   }
 };
 
@@ -568,26 +614,30 @@ const Questions = {
     const topicId = document.getElementById('qTopic').value;
     const topic = (Cache.topics || []).find(t => t.id === topicId);
     const chapter = topic ? (Cache.chapters || []).find(c => c.id === topic.chapterId) : null;
-    await saveItem('questions', {
+    const q = await saveItem('questions', {
       id: uid(), questionText, type: document.getElementById('qType').value, marks: parseInt(document.getElementById('qMarks').value) || 0,
       difficulty: document.getElementById('qDiff').value, modelAnswer: document.getElementById('qAnswer').value.trim(),
       topicId, chapterId: chapter?.id, subjectId: chapter?.subjectId, status: 'not-attempted', personalAnswer: '',
-      revision: { stage: -1, nextDate: null }, createdAt: nowISO()
+      createdAt: nowISO()
     });
-    Modal.close(); toast('Question saved'); Router.render();
+    await Flashcards.generateForQuestion(q);
+    Modal.close(); toast('Question saved · flashcard created'); Router.render();
   },
   async setStatus(id, status) {
     const q = Cache.questions.find(x => x.id === id); q.status = status;
-    if (status !== 'not-attempted' && !q.revision.nextDate) { const s = Revision.schedule(0); q.revision = { stage: s.stage, nextDate: s.nextDate }; }
     await saveItem('questions', q); Router.render();
   },
-  async remove(id) { if (!confirm('Delete this question?')) return; await trashItem('questions', id); Router.render(); },
+  async remove(id) {
+    if (!confirm('Delete this question? Its flashcard will be removed too.')) return;
+    await Flashcards.removeForSource('question', id);
+    await trashItem('questions', id); Router.render();
+  },
   render() {
     const items = Cache.questions || [];
     if (!items.length) return emptyState('❓', 'Build your question bank from past papers and practice.', 'Add Question', "Questions.promptNew()");
     return `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
       <h2 style="margin:0;">Questions (${items.length})</h2><button class="btn" onclick="Questions.promptNew()">+ New Question</button></div>
-      ${items.map(q => `<div class="card" style="margin-bottom:10px;">
+      ${items.map(q => { const fc = Flashcards.findFor('question', q.id); return `<div class="card" style="margin-bottom:10px;">
         <div style="display:flex;justify-content:space-between;gap:10px;">
           <div>${esc(q.questionText)}</div>
           <span class="pill">${q.marks} marks</span>
@@ -597,6 +647,7 @@ const Questions = {
           <span class="pill ${q.status === 'not-attempted' ? '' : 'warn'}">${esc(q.status)}</span>
           <span class="subtle">${subjectName(q.subjectId)}</span>
         </div>
+        <div class="subtle" style="margin-top:4px;">🃏 ${fc && fc.nextDate ? 'Next revision: ' + fmtDateShort(fc.nextDate) : 'Flashcard not yet reviewed'}</div>
         <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">
           <button class="btn sm secondary" onclick="Questions.toggleAnswer('${q.id}')">Reveal answer</button>
           <button class="btn sm secondary" onclick="Questions.setStatus('${q.id}','correct')">Mark correct</button>
@@ -604,7 +655,7 @@ const Questions = {
           <button class="btn sm secondary" onclick="Questions.remove('${q.id}')">Delete</button>
         </div>
         <div id="ans-${q.id}" style="display:none;margin-top:8px;padding:8px;background:var(--bg);border-radius:8px;">${esc(q.modelAnswer) || '<span class="subtle">No model answer recorded.</span>'}</div>
-      </div>`).join('')}`;
+      </div>`; }).join('')}`;
   },
   toggleAnswer(id) { const el = document.getElementById('ans-' + id); el.style.display = el.style.display === 'none' ? 'block' : 'none'; }
 };
@@ -632,7 +683,34 @@ const Bookmarks = {
 };
 
 /* ============================== PDF LIBRARY ============================== */
-let pdfDocCache = null, pdfCurrentPage = 1, pdfScale = 1.2;
+let pdfDocCache = null, pdfCurrentPage = 1, pdfScale = 1.2, pdfPageObj = null, pdfStickyMode = false;
+
+/* Minimal selectable text layer, built the same way pdf.js's own viewer does:
+   one absolutely-positioned, transparent span per text item, sized/rotated
+   from its render matrix, so the browser's native text selection works. */
+async function renderTextLayer(page, viewport, container) {
+  container.innerHTML = '';
+  container.style.width = viewport.width + 'px';
+  container.style.height = viewport.height + 'px';
+  let textContent;
+  try { textContent = await page.getTextContent(); } catch (e) { return; }
+  const frag = document.createDocumentFragment();
+  textContent.items.forEach(item => {
+    if (!item.str) return;
+    const tx = pdfjsLib.Util.transform(viewport.transform, item.transform);
+    const angle = Math.atan2(tx[1], tx[0]);
+    const fontHeight = Math.hypot(tx[2], tx[3]) || 1;
+    const span = document.createElement('span');
+    span.textContent = item.str;
+    span.style.left = tx[4] + 'px';
+    span.style.top = (tx[5] - fontHeight) + 'px';
+    span.style.fontSize = fontHeight + 'px';
+    span.style.fontFamily = 'sans-serif';
+    if (angle !== 0) span.style.transform = `rotate(${angle}rad)`;
+    frag.appendChild(span);
+  });
+  container.appendChild(frag);
+}
 const Pdfs = {
   upload() { document.getElementById('pdfFileInput').click(); },
   async handleFile(input) {
@@ -666,7 +744,6 @@ const Pdfs = {
     const rec = Cache.pdfs.find(p => p.id === id);
     if (!rec) return `<div class="empty-state"><h3>PDF not found</h3></div>`;
     setTimeout(() => Pdfs.load(rec), 30);
-    const bookmarks = (Cache.pdfBookmarks || []).filter(b => b.pdfId === id);
     return `
     <div style="display:flex;flex-direction:column;height:calc(100vh - 54px);margin:-24px -28px;">
       <div class="pdf-toolbar">
@@ -678,13 +755,19 @@ const Pdfs = {
         <button class="icon-btn" onclick="Pdfs.zoom(-0.15)">−</button>
         <button class="icon-btn" onclick="Pdfs.zoom(0.15)">+</button>
         <button class="icon-btn" onclick="Pdfs.bookmarkPage('${id}')">🔖 Bookmark page</button>
-        <button class="icon-btn" onclick="toast('Freehand drawing / PDF text highlighting: Coming Soon')">✎ Annotate (Coming Soon)</button>
+        <button class="icon-btn" id="stickyBtn" onclick="Pdfs.toggleStickyMode()">📌 Sticky note</button>
+        <span class="subtle" style="font-size:11.5px;">Select text to highlight/underline</span>
       </div>
       <div style="display:flex;flex:1;overflow:hidden;">
-        <div class="pdf-canvas-wrap" id="pdfCanvasWrap"><canvas id="pdfCanvas"></canvas></div>
-        <div style="width:220px;border-left:1px solid var(--border);padding:12px;overflow-y:auto;background:var(--bg-elev);">
-          <h4 style="font-size:12px;text-transform:uppercase;color:var(--text-dim);">Bookmarked pages</h4>
-          ${bookmarks.length ? bookmarks.map(b => `<div class="subtle" style="cursor:pointer;padding:4px 0;" onclick="Pdfs.goToPage(${b.page})">📍 Page ${b.page} ${b.label ? '— ' + esc(b.label) : ''}</div>`).join('') : '<div class="subtle">None yet.</div>'}
+        <div class="pdf-canvas-wrap" id="pdfCanvasWrap">
+          <div class="pdf-page-wrap" id="pdfPageWrap" onclick="Pdfs.handlePageClick(event)">
+            <canvas id="pdfCanvas"></canvas>
+            <div class="pdf-textlayer" id="pdfTextLayer" onmouseup="Pdfs.onTextSelect(event)"></div>
+            <div class="pdf-hl-overlay" id="pdfHlOverlay"></div>
+          </div>
+        </div>
+        <div style="width:220px;border-left:1px solid var(--border);padding:12px;overflow-y:auto;background:var(--bg-elev);" id="pdfSidePanel">
+          ${Pdfs.sidePanelHTML(id)}
         </div>
       </div>
     </div>`;
@@ -692,19 +775,26 @@ const Pdfs = {
   async load(rec) {
     try {
       pdfDocCache = await pdfjsLib.getDocument({ data: rec.blob.slice(0) }).promise;
-      pdfCurrentPage = 1; pdfScale = 1.2;
+      pdfCurrentPage = 1; pdfScale = 1.2; pdfStickyMode = false;
       Pdfs.renderPage();
     } catch (e) { toast('Could not render PDF'); console.error(e); }
   },
   async renderPage() {
     if (!pdfDocCache) return;
     const page = await pdfDocCache.getPage(pdfCurrentPage);
+    pdfPageObj = page;
     const viewport = page.getViewport({ scale: pdfScale });
     const canvas = document.getElementById('pdfCanvas'); if (!canvas) return;
     canvas.width = viewport.width; canvas.height = viewport.height;
     await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
     const label = document.getElementById('pdfPageLabel');
     if (label) label.textContent = `Page ${pdfCurrentPage} / ${pdfDocCache.numPages}`;
+    const wrap = document.getElementById('pdfPageWrap');
+    if (wrap) { wrap.style.width = viewport.width + 'px'; wrap.style.height = viewport.height + 'px'; }
+    const textLayer = document.getElementById('pdfTextLayer');
+    if (textLayer) await renderTextLayer(page, viewport, textLayer);
+    Pdfs.renderOverlay(viewport);
+    Pdfs.refreshSidePanel();
   },
   prevPage() { if (pdfCurrentPage > 1) { pdfCurrentPage--; Pdfs.renderPage(); } },
   nextPage() { if (pdfDocCache && pdfCurrentPage < pdfDocCache.numPages) { pdfCurrentPage++; Pdfs.renderPage(); } },
@@ -713,18 +803,189 @@ const Pdfs = {
   async bookmarkPage(pdfId) {
     const label = prompt('Label for this bookmark (optional):') || '';
     await saveItem('pdfBookmarks', { id: uid(), pdfId, page: pdfCurrentPage, label, createdAt: nowISO() });
-    Router.render();
+    Pdfs.refreshSidePanel();
+  },
+
+  /* ---- highlight / underline (selection-driven) ---- */
+  onTextSelect(e) {
+    document.getElementById('pdfSelToolbar')?.remove();
+    if (pdfStickyMode) return;
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed || !sel.toString().trim()) return;
+    const layer = document.getElementById('pdfTextLayer');
+    if (!layer || !layer.contains(sel.anchorNode)) return;
+    const range = sel.getRangeAt(0);
+    const rect = range.getBoundingClientRect();
+    const colors = Settings.get('highlightColors');
+    const bar = document.createElement('div');
+    bar.id = 'pdfSelToolbar'; bar.className = 'sel-toolbar';
+    bar.style.top = (rect.top + window.scrollY - 40) + 'px';
+    bar.style.left = (rect.left + window.scrollX) + 'px';
+    bar.innerHTML = colors.map((c, i) => `<button title="${esc(c.label)}" onmousedown="event.preventDefault();Pdfs.saveHighlight('${c.color}','${c.key}')">${['🟡', '🟢', '🔵', '🔴', '🟣', '🟠'][i] || '●'}</button>`).join('')
+      + `<button title="Underline" onmousedown="event.preventDefault();Pdfs.saveHighlight('','underline')">U̲</button>`;
+    document.body.appendChild(bar);
+  },
+  async saveHighlight(color, kind) {
+    const sel = window.getSelection();
+    if (!sel.rangeCount) return;
+    const range = sel.getRangeAt(0);
+    const text = sel.toString();
+    const wrap = document.getElementById('pdfPageWrap');
+    const wrapRect = wrap.getBoundingClientRect();
+    const rects = Array.from(range.getClientRects()).map(r => ({
+      x: (r.left - wrapRect.left) / pdfScale, y: (r.top - wrapRect.top) / pdfScale,
+      w: r.width / pdfScale, h: r.height / pdfScale
+    }));
+    sel.removeAllRanges();
+    document.getElementById('pdfSelToolbar')?.remove();
+    if (!rects.length) return;
+    await saveItem('annotations', {
+      id: uid(), targetType: 'pdf', pdfId: UI.params.id, page: pdfCurrentPage,
+      kind: kind === 'underline' ? 'underline' : 'highlight', color: kind === 'underline' ? '' : color,
+      rects, text: text.slice(0, 140), comment: '', createdAt: nowISO()
+    });
+    Pdfs.refreshOverlayAndPanel();
+    toast(kind === 'underline' ? 'Underlined' : 'Highlighted');
+  },
+
+  /* ---- sticky notes ---- */
+  toggleStickyMode() {
+    pdfStickyMode = !pdfStickyMode;
+    document.getElementById('stickyBtn')?.classList.toggle('active-toggle', pdfStickyMode);
+    if (pdfStickyMode) toast('Click anywhere on the page to place a sticky note');
+  },
+  handlePageClick(e) {
+    if (!pdfStickyMode) return;
+    if (window.getSelection().toString().trim()) return; // was a text selection, not a placement click
+    const wrap = document.getElementById('pdfPageWrap');
+    const r = wrap.getBoundingClientRect();
+    const x = (e.clientX - r.left) / pdfScale, y = (e.clientY - r.top) / pdfScale;
+    pdfStickyMode = false;
+    document.getElementById('stickyBtn')?.classList.remove('active-toggle');
+    const text = prompt('Sticky note text:');
+    if (!text) return;
+    saveItem('annotations', { id: uid(), targetType: 'pdf', pdfId: UI.params.id, page: pdfCurrentPage, kind: 'sticky', x, y, comment: text, text: '', createdAt: nowISO() })
+      .then(() => Pdfs.refreshOverlayAndPanel());
+  },
+  openHighlight(id) {
+    const a = Cache.annotations.find(x => x.id === id); if (!a) return;
+    Modal.open(a.kind === 'underline' ? 'Underline' : 'Highlight', `
+      <div class="subtle">"${esc(a.text)}"</div>
+      <label>Note (optional)</label><textarea id="pdfAnnotComment" rows="3">${esc(a.comment || '')}</textarea>
+      <div class="modal-actions">
+        <button class="btn danger sm" onclick="Pdfs.deleteAnnotation('${id}')">Delete</button>
+        <button class="btn sm" onclick="Pdfs.saveAnnotComment('${id}')">Save</button>
+      </div>`);
+  },
+  openSticky(id) {
+    const a = Cache.annotations.find(x => x.id === id); if (!a) return;
+    Modal.open('Sticky note', `
+      <textarea id="pdfAnnotComment" rows="4">${esc(a.comment || '')}</textarea>
+      <div class="modal-actions">
+        <button class="btn danger sm" onclick="Pdfs.deleteAnnotation('${id}')">Delete</button>
+        <button class="btn sm" onclick="Pdfs.saveAnnotComment('${id}')">Save</button>
+      </div>`);
+  },
+  async saveAnnotComment(id) {
+    const a = Cache.annotations.find(x => x.id === id); if (!a) return;
+    a.comment = document.getElementById('pdfAnnotComment').value;
+    await saveItem('annotations', a);
+    Modal.close();
+    Pdfs.refreshOverlayAndPanel();
+  },
+  async deleteAnnotation(id) {
+    await DB.del('annotations', id);
+    Cache.annotations = Cache.annotations.filter(a => a.id !== id);
+    Modal.close();
+    Pdfs.refreshOverlayAndPanel();
+  },
+
+  /* ---- overlay + side panel rendering ---- */
+  refreshOverlayAndPanel() {
+    if (!pdfPageObj) return;
+    Pdfs.renderOverlay(pdfPageObj.getViewport({ scale: pdfScale }));
+    Pdfs.refreshSidePanel();
+  },
+  renderOverlay(viewport) {
+    const overlay = document.getElementById('pdfHlOverlay');
+    if (!overlay) return;
+    overlay.style.width = viewport.width + 'px';
+    overlay.style.height = viewport.height + 'px';
+    overlay.innerHTML = '';
+    const pdfId = UI.params.id;
+    const items = (Cache.annotations || []).filter(a => a.targetType === 'pdf' && a.pdfId === pdfId && a.page === pdfCurrentPage);
+    items.forEach(a => {
+      if (a.kind === 'sticky') {
+        const icon = document.createElement('div');
+        icon.className = 'pdf-sticky-icon';
+        icon.style.left = (a.x * pdfScale) + 'px'; icon.style.top = (a.y * pdfScale) + 'px';
+        icon.textContent = '📝'; icon.title = a.comment;
+        icon.onclick = (ev) => { ev.stopPropagation(); Pdfs.openSticky(a.id); };
+        overlay.appendChild(icon);
+      } else {
+        (a.rects || []).forEach(r => {
+          const div = document.createElement('div');
+          div.className = 'pdf-hl-rect' + (a.kind === 'underline' ? ' underline' : '');
+          div.style.left = (r.x * pdfScale) + 'px'; div.style.top = (r.y * pdfScale) + 'px';
+          div.style.width = (r.w * pdfScale) + 'px'; div.style.height = (r.h * pdfScale) + 'px';
+          if (a.kind !== 'underline') div.style.background = a.color;
+          div.title = a.comment || a.text || '';
+          div.onclick = (ev) => { ev.stopPropagation(); Pdfs.openHighlight(a.id); };
+          overlay.appendChild(div);
+        });
+      }
+    });
+  },
+  refreshSidePanel() {
+    const el = document.getElementById('pdfSidePanel');
+    if (el) el.innerHTML = Pdfs.sidePanelHTML(UI.params.id);
+  },
+  sidePanelHTML(pdfId) {
+    const bookmarks = (Cache.pdfBookmarks || []).filter(b => b.pdfId === pdfId);
+    const pageAnnots = (Cache.annotations || []).filter(a => a.targetType === 'pdf' && a.pdfId === pdfId && a.page === pdfCurrentPage);
+    return `
+      <h4 style="font-size:12px;text-transform:uppercase;color:var(--text-dim);margin-top:0;">This page</h4>
+      ${pageAnnots.length ? pageAnnots.map(a => `<div class="subtle" style="cursor:pointer;padding:4px 0;" onclick="${a.kind === 'sticky' ? `Pdfs.openSticky('${a.id}')` : `Pdfs.openHighlight('${a.id}')`}">${a.kind === 'sticky' ? '📝' : a.kind === 'underline' ? '‾' : '🖍'} ${esc((a.comment || a.text || '').slice(0, 42))}</div>`).join('') : '<div class="subtle">None on this page yet.</div>'}
+      <h4 style="font-size:12px;text-transform:uppercase;color:var(--text-dim);margin-top:14px;">Bookmarked pages</h4>
+      ${bookmarks.length ? bookmarks.map(b => `<div class="subtle" style="cursor:pointer;padding:4px 0;" onclick="Pdfs.goToPage(${b.page})">📍 Page ${b.page} ${b.label ? '— ' + esc(b.label) : ''}</div>`).join('') : '<div class="subtle">None yet.</div>'}
+    `;
   }
 };
 
 /* ============================== SEARCH / COMMAND PALETTE ============================== */
+/* Static command list for the palette — actions, not content. Dynamic
+   "Go to subject" commands are appended at search time from Cache.subjects. */
+const Commands = [
+  { label: 'New Note', icon: '📝', kind: 'Create', run: () => { CmdK.close(); Notes.promptNew(); } },
+  { label: 'New Course', icon: '📚', kind: 'Create', run: () => { CmdK.close(); Courses.promptNew(); } },
+  { label: 'Import PDF', icon: '📄', kind: 'Create', run: () => { CmdK.close(); UI.nav('pdfs'); setTimeout(() => Pdfs.upload(), 250); } },
+  { label: 'Add Mnemonic', icon: '🧠', kind: 'Create', run: () => { CmdK.close(); Mnemonics.promptNew(); } },
+  { label: 'Add Jargon', icon: '🔤', kind: 'Create', run: () => { CmdK.close(); Jargons.promptNew(); } },
+  { label: 'Add Question', icon: '❓', kind: 'Create', run: () => { CmdK.close(); Questions.promptNew(); } },
+  { label: 'Start Revision', icon: '🔁', kind: 'Go to', run: () => { CmdK.close(); UI.nav('revision'); } },
+  { label: 'Exam Mode', icon: '🎓', kind: 'Go to', run: () => { CmdK.close(); UI.nav('exam'); } },
+  { label: 'Last-Minute Revision', icon: '⚡', kind: 'Go to', run: () => { CmdK.close(); UI.nav('lmr'); } },
+  { label: 'Focus Mode / Study Timer', icon: '⏱', kind: 'Go to', run: () => { CmdK.close(); UI.nav('focus'); } },
+  { label: 'Open Dashboard', icon: '🏠', kind: 'Go to', run: () => { CmdK.close(); UI.nav('dashboard'); } },
+  { label: 'Open PDF Library', icon: '📄', kind: 'Go to', run: () => { CmdK.close(); UI.nav('pdfs'); } },
+  { label: 'Open Questions', icon: '❓', kind: 'Go to', run: () => { CmdK.close(); UI.nav('questions'); } },
+  { label: 'Open Mnemonics', icon: '🧠', kind: 'Go to', run: () => { CmdK.close(); UI.nav('mnemonics'); } },
+  { label: 'Open Jargons', icon: '🔤', kind: 'Go to', run: () => { CmdK.close(); UI.nav('jargons'); } },
+  { label: 'Open Bookmarks', icon: '🔖', kind: 'Go to', run: () => { CmdK.close(); UI.nav('bookmarks'); } },
+  { label: 'Open Trash', icon: '🗑', kind: 'Go to', run: () => { CmdK.close(); UI.nav('trash'); } },
+  { label: 'Open Settings', icon: '⚙️', kind: 'Go to', run: () => { CmdK.close(); UI.nav('settings'); } },
+  { label: 'Export Backup', icon: '⬇', kind: 'Action', run: () => { CmdK.close(); UI.nav('settings'); setTimeout(() => BackupService.exportJSON(), 250); } },
+  { label: 'Toggle Dark Mode', icon: '🌓', kind: 'Action', run: () => { CmdK.close(); Theme.toggle(); } },
+];
+
 const CmdK = {
+  _results: [],
   open() {
     const backdrop = document.createElement('div');
     backdrop.className = 'cmdk-backdrop'; backdrop.id = 'cmdkBackdrop';
     backdrop.onclick = (e) => { if (e.target === backdrop) CmdK.close(); };
     backdrop.innerHTML = `<div class="cmdk">
-      <input id="cmdkInput" placeholder="Search notes, PDFs, mnemonics, jargons, questions…" oninput="CmdK.search(this.value)">
+      <input id="cmdkInput" placeholder="Search everything, or type a command (New Note, Toggle Dark Mode…)" oninput="CmdK.search(this.value)">
       <div class="cmdk-results" id="cmdkResults"></div>
     </div>`;
     document.body.appendChild(backdrop);
@@ -732,12 +993,35 @@ const CmdK = {
     CmdK.search('');
   },
   close() { const b = document.getElementById('cmdkBackdrop'); if (b) b.remove(); },
-  search(q) {
-    const results = Search.run(q).slice(0, 30);
-    const el = document.getElementById('cmdkResults'); if (!el) return;
-    el.innerHTML = results.length ? results.map(r => `<div class="cmdk-item" onclick="CmdK.go('${r.route}','${r.id}')"><span>${r.icon} ${esc(r.title)}</span><small>${r.type}</small></div>`).join('')
-      : `<div class="cmdk-item subtle">No matches</div>`;
+  allCommands() {
+    const dynamic = (Cache.subjects || []).map(s => ({
+      label: 'Go to subject: ' + s.name, icon: '📘', kind: 'Go to',
+      run: () => {
+        CmdK.close();
+        Tree.expanded.add(s.courseId); Tree.expanded.add(s.id); Tree.render();
+        if (window.innerWidth <= 860) UI.toggleSidebar();
+      }
+    }));
+    return Commands.concat(dynamic);
   },
+  search(q) {
+    const query = (q || '').trim();
+    let results;
+    if (!query) {
+      results = this.allCommands().slice(0, 10).map(c => ({ ...c, isCommand: true }));
+    } else {
+      const matchedCommands = this.allCommands().filter(c => c.label.toLowerCase().includes(query.toLowerCase())).map(c => ({ ...c, isCommand: true }));
+      const contentResults = Search.run(query).slice(0, 20);
+      results = [...matchedCommands, ...contentResults];
+    }
+    this._results = results;
+    const el = document.getElementById('cmdkResults'); if (!el) return;
+    el.innerHTML = results.length ? results.map((r, i) => r.isCommand
+      ? `<div class="cmdk-item" onclick="CmdK.runCommand(${i})"><span>${r.icon} ${esc(r.label)}</span><small>${esc(r.kind)}</small></div>`
+      : `<div class="cmdk-item" onclick="CmdK.go('${r.route}','${r.id}')"><span>${r.icon} ${esc(r.title)}</span><small>${r.type}</small></div>`
+    ).join('') : `<div class="cmdk-item subtle">No matches</div>`;
+  },
+  runCommand(i) { const r = this._results[i]; if (r && r.run) r.run(); },
   go(route, id) { CmdK.close(); UI.nav(route, { id }); }
 };
 const Search = {
@@ -760,20 +1044,22 @@ const RevisionView = {
   showAnswer: false,
   render() {
     const due = Revision.dueItems();
+    const kindLabel = (d) => d.type === 'note' ? 'Note' : d.obj.sourceType === 'question' ? 'Question' : 'Mnemonic';
+    const kindIcon = (d) => d.type === 'note' ? '📝' : d.obj.sourceType === 'question' ? '❓' : '🧠';
     if (this.mode === 'list' || !due.length) {
       if (!due.length) return emptyState('🎉', 'Nothing due for revision right now.', null, null);
       return `<h2>Revision due today (${due.length})</h2>
       <button class="btn" style="margin-bottom:14px;" onclick="RevisionView.mode='cards';RevisionView.cardIndex=0;Router.render();">▶ Start Revision Session</button>
-      ${due.map(d => `<div class="list-row"><span>${d.type === 'note' ? '📝' : d.type === 'question' ? '❓' : '🃏'}</span>
-        <div style="flex:1;">${esc(d.type === 'note' ? d.obj.title : d.type === 'question' ? d.obj.questionText.slice(0, 60) : d.obj.front)}</div>
-        <span class="pill">${d.type}</span></div>`).join('')}`;
+      ${due.map(d => `<div class="list-row"><span>${kindIcon(d)}</span>
+        <div style="flex:1;">${esc(d.type === 'note' ? d.obj.title : d.obj.front)}</div>
+        <span class="pill">${kindLabel(d)}</span></div>`).join('')}`;
     }
     // card mode
     if (this.cardIndex >= due.length) { this.mode = 'list'; toast('Revision session complete 🎉'); return this.render(); }
     const d = due[this.cardIndex];
-    const front = d.type === 'note' ? d.obj.title : d.type === 'question' ? d.obj.questionText : d.obj.front;
-    const back = d.type === 'note' ? '(open the note to review in full)' : d.type === 'question' ? (d.obj.modelAnswer || 'No model answer recorded') : d.obj.back;
-    return `<div class="subtle" style="margin-bottom:10px;">Card ${this.cardIndex + 1} of ${due.length}</div>
+    const front = d.type === 'note' ? d.obj.title : d.obj.front;
+    const back = d.type === 'note' ? '(open the note to review in full)' : d.obj.back;
+    return `<div class="subtle" style="margin-bottom:10px;">Card ${this.cardIndex + 1} of ${due.length} · ${kindLabel(d)}</div>
       <div class="flash-card" onclick="RevisionView.showAnswer=!RevisionView.showAnswer;Router.render();">
         ${this.showAnswer ? esc(back) : esc(front)}
       </div>
@@ -790,6 +1076,185 @@ const RevisionView = {
     await Revision.rate(type, id, rating);
     this.cardIndex++; this.showAnswer = false; Router.render();
   }
+};
+
+/* ============================== EXAM MODE ============================== */
+const ExamMode = {
+  state: 'setup', // setup | question | summary
+  queue: [], index: 0, answer: '', graded: false, timerSeconds: 0, timerInterval: null, results: [], minPerMark: 1.5,
+  render() {
+    if (this.state === 'summary') return this.renderSummary();
+    if (this.state === 'question') return this.renderQuestion();
+    return this.renderSetup();
+  },
+  renderSetup() {
+    return `<h2>Exam Mode</h2>
+      <p class="subtle">Attempt questions one at a time under a timer, then self-grade against the model answer.</p>
+      <div class="card" style="max-width:420px;">
+        <label>Subject</label>
+        <select id="examSubject"><option value="">All subjects</option>${subjectOptions()}</select>
+        <label>Difficulty</label>
+        <select id="examDiff"><option value="">Any</option><option>Easy</option><option>Medium</option><option>Hard</option></select>
+        <label>Minutes per mark</label>
+        <input type="number" id="examMinPerMark" value="1.5" step="0.5" min="0.5">
+        <button class="btn" style="margin-top:12px;" onclick="ExamMode.start()">Start Exam</button>
+      </div>`;
+  },
+  start() {
+    const subj = document.getElementById('examSubject').value;
+    const diff = document.getElementById('examDiff').value;
+    this.minPerMark = parseFloat(document.getElementById('examMinPerMark').value) || 1.5;
+    this.queue = (Cache.questions || []).filter(q => (!subj || q.subjectId === subj) && (!diff || q.difficulty === diff));
+    if (!this.queue.length) { toast('No questions match those filters — add some in the Questions section first.'); return; }
+    this.queue = [...this.queue].sort(() => Math.random() - 0.5);
+    this.index = 0; this.results = []; this.state = 'question';
+    this.beginTimerForCurrent();
+    Router.render();
+  },
+  beginTimerForCurrent() {
+    clearInterval(this.timerInterval);
+    const q = this.queue[this.index];
+    this.timerSeconds = Math.max(30, Math.round((q.marks || 5) * this.minPerMark * 60));
+    this.graded = false; this.answer = '';
+    this.timerInterval = setInterval(() => {
+      this.timerSeconds--;
+      const d = document.getElementById('examTimerDisplay');
+      if (d) d.textContent = ExamMode.fmtTime();
+      if (this.timerSeconds <= 0) { clearInterval(this.timerInterval); ExamMode.submit(); }
+    }, 1000);
+  },
+  fmtTime() {
+    const s = Math.max(0, this.timerSeconds);
+    return `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
+  },
+  renderQuestion() {
+    const q = this.queue[this.index];
+    if (!q) { this.state = 'summary'; return this.renderSummary(); }
+    if (!this.graded) {
+      return `<div class="subtle">Question ${this.index + 1} of ${this.queue.length} · ${subjectName(q.subjectId)}</div>
+        <div class="timer-display" id="examTimerDisplay" style="font-size:40px;margin:10px 0;">${this.fmtTime()}</div>
+        <div class="card" style="max-width:640px;">
+          <div style="display:flex;justify-content:space-between;gap:10px;"><b>${esc(q.questionText)}</b><span class="pill">${q.marks} marks</span></div>
+          <label>Your answer</label>
+          <textarea id="examAnswerBox" rows="6" oninput="ExamMode.answer=this.value">${esc(this.answer)}</textarea>
+          <button class="btn" style="margin-top:10px;" onclick="ExamMode.submit()">Submit</button>
+        </div>`;
+    }
+    return `<div class="subtle">Question ${this.index + 1} of ${this.queue.length}</div>
+      <div class="card" style="max-width:640px;">
+        <b>${esc(q.questionText)}</b>
+        <hr class="sep">
+        <label>Your answer</label>
+        <div class="subtle" style="white-space:pre-wrap;padding:8px;background:var(--bg);border-radius:8px;">${esc(this.answer) || '(No answer given — time ran out or nothing was typed)'}</div>
+        <label style="margin-top:12px;">Model answer</label>
+        <div class="subtle" style="white-space:pre-wrap;padding:8px;background:var(--bg);border-radius:8px;">${esc(q.modelAnswer) || '(No model answer recorded)'}</div>
+        <div class="rate-row" style="margin-top:14px;">
+          <button class="good" onclick="ExamMode.grade('correct')">Correct</button>
+          <button class="hard" onclick="ExamMode.grade('partial')">Partially correct</button>
+          <button class="again" onclick="ExamMode.grade('incorrect')">Incorrect</button>
+        </div>
+        <div class="subtle" style="text-align:center;margin-top:8px;font-size:11.5px;">Grading also updates this question's flashcard revision schedule.</div>
+      </div>`;
+  },
+  submit() {
+    clearInterval(this.timerInterval);
+    this.graded = true;
+    Router.render();
+  },
+  grade(verdict) {
+    const q = this.queue[this.index];
+    q.status = verdict === 'correct' ? 'correct' : 'incorrect';
+    saveItem('questions', q);
+    const fc = Flashcards.findFor('question', q.id);
+    if (fc) Revision.rate('flashcard', fc.id, verdict === 'correct' ? 'good' : verdict === 'partial' ? 'hard' : 'again');
+    this.results.push({ questionText: q.questionText, verdict, marks: q.marks });
+    this.index++;
+    if (this.index >= this.queue.length) { this.state = 'summary'; Router.render(); return; }
+    this.beginTimerForCurrent();
+    Router.render();
+  },
+  renderSummary() {
+    clearInterval(this.timerInterval);
+    const total = this.results.length;
+    const correct = this.results.filter(r => r.verdict === 'correct').length;
+    const needsWork = total - correct;
+    return `<h2>Exam Summary</h2>
+      <div class="grid cols-3" style="margin-bottom:18px;">
+        <div class="card"><div class="subtle">Attempted</div><h2 style="margin:6px 0;">${total}</h2></div>
+        <div class="card"><div class="subtle">Correct</div><h2 style="margin:6px 0;">${correct}</h2></div>
+        <div class="card"><div class="subtle">Needs work</div><h2 style="margin:6px 0;">${needsWork}</h2></div>
+      </div>
+      ${this.results.map(r => `<div class="list-row"><span>${r.verdict === 'correct' ? '✅' : r.verdict === 'partial' ? '🟡' : '🔴'}</span><div style="flex:1;">${esc(r.questionText)}</div><span class="pill">${r.marks} marks</span></div>`).join('')}
+      <button class="btn" style="margin-top:16px;" onclick="ExamMode.reset()">Start another exam</button>`;
+  },
+  reset() { this.state = 'setup'; this.queue = []; this.index = 0; this.results = []; Router.render(); }
+};
+
+/* ============================== LAST-MINUTE REVISION MODE ============================== */
+const LMR = {
+  mode: 'setup', index: 0, items: [],
+  gather(subjectId) {
+    const items = [];
+    (Cache.notes || []).forEach(n => {
+      if (subjectId && n.subjectId !== subjectId) return;
+      if (n.importance >= 4 || n.examFrequency === 'high' || n.status === 'difficult') {
+        items.push({ type: 'Note', icon: '📝', title: n.title, body: stripHtml(n.content).slice(0, 500), tag: n.examFrequency === 'high' ? 'Exam Important' : (n.status === 'difficult' ? 'Difficult' : `★${n.importance}`) });
+      }
+    });
+    (Cache.jargons || []).forEach(j => {
+      if (subjectId && j.subjectId !== subjectId) return;
+      if (j.importance && j.importance !== 'Normal') {
+        items.push({ type: 'Jargon', icon: '🔤', title: j.term, body: j.meaning + (j.memoryTrick ? `\n💡 ${j.memoryTrick}` : ''), tag: j.importance });
+      }
+    });
+    (Cache.questions || []).forEach(q => {
+      if (subjectId && q.subjectId !== subjectId) return;
+      if (q.difficulty === 'Hard') {
+        items.push({ type: 'Question', icon: '❓', title: q.questionText, body: q.modelAnswer || '(No model answer recorded)', tag: 'Hard' });
+      }
+    });
+    (Cache.mnemonics || []).forEach(m => {
+      if (subjectId && topicSubjectId(m.topicId) !== subjectId) return;
+      if (m.favorite) {
+        items.push({ type: 'Mnemonic', icon: '🧠', title: m.title, body: `${m.mnemonicText}\n${m.meaning}`, tag: 'Favorite' });
+      }
+    });
+    return items;
+  },
+  render() { return this.mode === 'setup' ? this.renderSetup() : this.renderStream(); },
+  renderSetup() {
+    return `<h2>Last-Minute Revision</h2>
+      <p class="subtle">Rapid-fire through only your highest-priority content: ★4–5 notes, exam-important notes, difficult topics, must-memorize jargons, hard questions, and favorited mnemonics.</p>
+      <div class="card" style="max-width:420px;">
+        <label>Subject</label>
+        <select id="lmrSubject"><option value="">All subjects</option>${subjectOptions()}</select>
+        <button class="btn" style="margin-top:12px;" onclick="LMR.start()">Start</button>
+      </div>`;
+  },
+  start() {
+    const subj = document.getElementById('lmrSubject').value;
+    this.items = this.gather(subj);
+    if (!this.items.length) { toast('Nothing marked high-importance / exam-critical yet for this selection.'); return; }
+    this.index = 0; this.mode = 'stream'; Router.render();
+  },
+  renderStream() {
+    if (this.index >= this.items.length) {
+      return `<div class="empty-state"><div style="font-size:38px;">🎉</div><h3>That's everything marked important.</h3>
+      <button class="btn" onclick="LMR.reset()">Back to setup</button></div>`;
+    }
+    const it = this.items[this.index];
+    return `<div class="subtle" style="margin-bottom:10px;">${this.index + 1} of ${this.items.length} · ${it.type}</div>
+      <div class="card" style="max-width:640px;">
+        <div style="display:flex;justify-content:space-between;gap:10px;"><b>${it.icon} ${esc(it.title)}</b><span class="pill warn">${esc(it.tag)}</span></div>
+        <div class="subtle" style="white-space:pre-wrap;margin-top:10px;">${esc(it.body)}</div>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:center;margin-top:16px;">
+        <button class="btn secondary" ${this.index === 0 ? 'disabled' : ''} onclick="LMR.index--;Router.render();">‹ Prev</button>
+        <button class="btn" onclick="LMR.index++;Router.render();">Next ›</button>
+      </div>
+      <div style="text-align:center;margin-top:10px;"><button class="btn secondary sm" onclick="LMR.reset()">Exit</button></div>`;
+  },
+  reset() { this.mode = 'setup'; this.items = []; this.index = 0; Router.render(); }
 };
 
 /* ============================== STUDY TIMER / FOCUS MODE ============================== */
@@ -1005,6 +1470,8 @@ const Router = {
       case 'jargons': html = Jargons.render(); break;
       case 'questions': html = Questions.render(); break;
       case 'revision': html = RevisionView.render(); break;
+      case 'exam': html = ExamMode.render(); break;
+      case 'lmr': html = LMR.render(); break;
       case 'bookmarks': html = Bookmarks.render(); break;
       case 'focus': html = Timer.render(); break;
       case 'trash': html = TrashView.render(); break;
@@ -1039,9 +1506,11 @@ async function seedIfEmpty() {
     revision: Revision.schedule(0)
   };
   await saveItem('notes', note);
-  await saveItem('mnemonics', { id: uid(), title: 'ITC Conditions', mnemonicText: 'RITE', meaning: 'R = Registered person\nI = Invoice\nT = Tax paid\nE = Eligible use', topicId: topic.id, tags: [], favorite: true, createdAt: nowISO() });
+  const mnem = await saveItem('mnemonics', { id: uid(), title: 'ITC Conditions', mnemonicText: 'RITE', meaning: 'R = Registered person\nI = Invoice\nT = Tax paid\nE = Eligible use', topicId: topic.id, tags: [], favorite: true, createdAt: nowISO() });
   await saveItem('jargons', { id: uid(), term: 'Input Tax Credit', meaning: 'Credit for tax paid on inward supplies, available for set-off against output tax liability.', memoryTrick: 'Think: tax you paid IN, credited back.', subjectId: subj.id, importance: 'Important', tags: [], createdAt: nowISO() });
-  await saveItem('questions', { id: uid(), questionText: 'Explain the conditions for claiming Input Tax Credit under GST.', type: 'Theory', marks: 5, difficulty: 'Medium', modelAnswer: 'A registered person must hold a valid tax invoice, have received the goods/services, the supplier must have paid the tax, and the return must be filed. (Illustrative answer.)', topicId: topic.id, chapterId: chap.id, subjectId: subj.id, status: 'not-attempted', personalAnswer: '', revision: { stage: -1, nextDate: null }, createdAt: nowISO() });
+  const q = await saveItem('questions', { id: uid(), questionText: 'Explain the conditions for claiming Input Tax Credit under GST.', type: 'Theory', marks: 5, difficulty: 'Medium', modelAnswer: 'A registered person must hold a valid tax invoice, have received the goods/services, the supplier must have paid the tax, and the return must be filed. (Illustrative answer.)', topicId: topic.id, chapterId: chap.id, subjectId: subj.id, status: 'not-attempted', personalAnswer: '', createdAt: nowISO() });
+  await Flashcards.generateForMnemonic(mnem);
+  await Flashcards.generateForQuestion(q);
   await loadAllToCache();
 }
 
