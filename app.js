@@ -174,12 +174,12 @@ const Settings = {
     fontSize: 'md',
     revisionIntervals: [1, 3, 7, 14, 30],
     highlightColors: [
-      { key: 'y', label: 'Important', color: '#fde68a' },
-      { key: 'g', label: 'Definition', color: '#bbf7d0' },
-      { key: 'b', label: 'Concept', color: '#bfdbfe' },
-      { key: 'r', label: 'Exam Alert', color: '#fecaca' },
-      { key: 'p', label: 'Mnemonic', color: '#e9d5ff' },
-      { key: 'o', label: 'Exception', color: '#fed7aa' },
+      { key: 'y', label: 'Important', color: '#FFD84D' },
+      { key: 'g', label: 'Definition', color: '#7FE0A0' },
+      { key: 'b', label: 'Concept', color: '#8FC7FA' },
+      { key: 'r', label: 'Exam Alert', color: '#FF9585' },
+      { key: 'p', label: 'Mnemonic', color: '#D9AEFF' },
+      { key: 'o', label: 'Exception', color: '#FFB870' },
     ],
   },
   get(key) {
@@ -278,6 +278,77 @@ const Courses = {
     const order = (Cache.topics || []).filter(t => t.chapterId === chapterId).length;
     await saveItem('topics', { id: uid(), chapterId, name, order, createdAt: nowISO() });
     Tree.render(); toast('Topic added');
+  },
+  async deleteTopic(id, opts = {}) {
+    const t = (Cache.topics || []).find(x => x.id === id); if (!t) return false;
+    if (!opts.skipConfirm) {
+      const noteCount = (Cache.notes || []).filter(n => n.topicId === id).length;
+      const mnemCount = (Cache.mnemonics || []).filter(m => m.topicId === id).length;
+      const qCount = (Cache.questions || []).filter(q => q.topicId === id).length;
+      if (!confirm(`Delete topic "${t.name}"? ${noteCount} note(s), ${mnemCount} mnemonic(s) and ${qCount} question(s) inside it will be moved to Trash.`)) return false;
+    }
+    for (const n of (Cache.notes || []).filter(n => n.topicId === id)) await trashItem('notes', n.id);
+    for (const m of (Cache.mnemonics || []).filter(m => m.topicId === id)) { await Flashcards.removeForSource('mnemonic', m.id); await trashItem('mnemonics', m.id); }
+    for (const q of (Cache.questions || []).filter(q => q.topicId === id)) { await Flashcards.removeForSource('question', q.id); await trashItem('questions', q.id); }
+    await DB.del('topics', id);
+    Cache.topics = Cache.topics.filter(x => x.id !== id);
+    if (!opts.skipConfirm) {
+      Tree.render();
+      if (UI.route === 'topic' && UI.params.id === id) UI.nav('dashboard');
+      toast('Topic deleted');
+    }
+    return true;
+  },
+  async deleteChapter(id, opts = {}) {
+    const c = (Cache.chapters || []).find(x => x.id === id); if (!c) return false;
+    const topics = (Cache.topics || []).filter(t => t.chapterId === id);
+    if (!opts.skipConfirm) {
+      if (!confirm(`Delete chapter "${c.name}" and all ${topics.length} topic(s) inside it? Notes, mnemonics and questions inside those topics will be moved to Trash.`)) return false;
+    }
+    const viewingDeletedTopic = UI.route === 'topic' && topics.some(t => t.id === UI.params.id);
+    for (const t of topics) await Courses.deleteTopic(t.id, { skipConfirm: true });
+    await DB.del('chapters', id);
+    Cache.chapters = Cache.chapters.filter(x => x.id !== id);
+    if (!opts.skipConfirm) {
+      Tree.render();
+      if (viewingDeletedTopic) UI.nav('dashboard');
+      toast('Chapter deleted');
+    }
+    return true;
+  },
+  async deleteSubject(id, opts = {}) {
+    const s = (Cache.subjects || []).find(x => x.id === id); if (!s) return false;
+    const chapters = (Cache.chapters || []).filter(c => c.subjectId === id);
+    const jargons = (Cache.jargons || []).filter(j => j.subjectId === id);
+    if (!opts.skipConfirm) {
+      if (!confirm(`Delete subject "${s.name}" and everything inside it — ${chapters.length} chapter(s) with their topics, notes, mnemonics and questions (moved to Trash), plus ${jargons.length} jargon(s)? PDFs tagged to this subject will be kept, just un-tagged.`)) return false;
+    }
+    const topicIdsUnder = chapters.flatMap(c => (Cache.topics || []).filter(t => t.chapterId === c.id).map(t => t.id));
+    const viewingDeletedTopic = UI.route === 'topic' && topicIdsUnder.includes(UI.params.id);
+    for (const c of chapters) await Courses.deleteChapter(c.id, { skipConfirm: true });
+    for (const j of jargons) await trashItem('jargons', j.id);
+    for (const p of (Cache.pdfs || []).filter(p => p.subjectId === id)) { p.subjectId = ''; await saveItem('pdfs', p); }
+    await DB.del('subjects', id);
+    Cache.subjects = Cache.subjects.filter(x => x.id !== id);
+    if (!opts.skipConfirm) {
+      Tree.render();
+      if (viewingDeletedTopic) UI.nav('dashboard');
+      toast('Subject deleted');
+    }
+    return true;
+  },
+  async deleteCourse(id) {
+    const c = (Cache.courses || []).find(x => x.id === id); if (!c) return;
+    const subjects = (Cache.subjects || []).filter(s => s.courseId === id);
+    if (!confirm(`Delete the course "${c.name}" and everything inside it — ${subjects.length} subject(s) and all their chapters, topics, notes, mnemonics, questions and jargons? The course/subject/chapter/topic structure is removed permanently; notes, mnemonics, questions and jargons go to Trash and can be restored from there.`)) return;
+    const allTopicIds = subjects.flatMap(s => (Cache.chapters || []).filter(ch => ch.subjectId === s.id).flatMap(ch => (Cache.topics || []).filter(t => t.chapterId === ch.id).map(t => t.id)));
+    const viewingDeletedTopic = UI.route === 'topic' && allTopicIds.includes(UI.params.id);
+    for (const s of subjects) await Courses.deleteSubject(s.id, { skipConfirm: true });
+    await DB.del('courses', id);
+    Cache.courses = Cache.courses.filter(x => x.id !== id);
+    Tree.render();
+    if (viewingDeletedTopic) UI.nav('dashboard');
+    toast('Course deleted');
   }
 };
 
@@ -313,7 +384,8 @@ const Tree = {
     return `<div class="tree-node">
       <div class="tree-row" onclick="Tree.toggle('${c.id}')">
         <span class="caret">${open ? '▾' : '▸'}</span><span>📚 ${esc(c.name)}</span>
-        <span class="add-mini" onclick="event.stopPropagation();Courses.promptNewSubject('${c.id}')">+</span>
+        <span class="add-mini" onclick="event.stopPropagation();Courses.promptNewSubject('${c.id}')" title="Add a subject to this course">+</span>
+        <span class="del-mini" onclick="event.stopPropagation();Courses.deleteCourse('${c.id}')" title="Delete this course">✕</span>
       </div>
       ${open ? `<div class="tree-children">${subjects.map(s => this.renderSubject(s)).join('') || '<div class="subtle" style="padding:4px 8px;">No subjects</div>'}</div>` : ''}
     </div>`;
@@ -327,7 +399,8 @@ const Tree = {
         ondrop="Tree.onDrop(event,'subject','subjects','courseId','${s.courseId}','${s.id}')"
         onclick="Tree.toggle('${s.id}')" title="Drag to reorder">
         <span class="caret">${open ? '▾' : '▸'}</span><span>${esc(s.name)}</span>
-        <span class="add-mini" onclick="event.stopPropagation();Courses.promptNewChapter('${s.id}')">+</span>
+        <span class="add-mini" onclick="event.stopPropagation();Courses.promptNewChapter('${s.id}')" title="Add a chapter to this subject">+</span>
+        <span class="del-mini" onclick="event.stopPropagation();Courses.deleteSubject('${s.id}')" title="Delete this subject">✕</span>
       </div>
       ${open ? `<div class="tree-children">${chapters.map(c => this.renderChapter(c)).join('') || '<div class="subtle" style="padding:4px 8px;">No chapters</div>'}</div>` : ''}
     </div>`;
@@ -341,12 +414,14 @@ const Tree = {
         ondrop="Tree.onDrop(event,'chapter','chapters','subjectId','${c.subjectId}','${c.id}')"
         onclick="Tree.toggle('${c.id}')" title="Drag to reorder">
         <span class="caret">${open ? '▾' : '▸'}</span><span>${esc(c.name)}</span>
-        <span class="add-mini" onclick="event.stopPropagation();Courses.promptNewTopic('${c.id}')">+</span>
+        <span class="add-mini" onclick="event.stopPropagation();Courses.promptNewTopic('${c.id}')" title="Add a topic to this chapter">+</span>
+        <span class="del-mini" onclick="event.stopPropagation();Courses.deleteChapter('${c.id}')" title="Delete this chapter">✕</span>
       </div>
       ${open ? `<div class="tree-children">${topics.map(t => `<div class="tree-row ${UI.route === 'topic' && UI.params.id === t.id ? 'active' : ''}" draggable="true"
         ondragstart="Tree.dragStart(event,'topic','${t.id}')" ondragover="Tree.allowDrop(event)"
         ondrop="Tree.onDrop(event,'topic','topics','chapterId','${t.chapterId}','${t.id}')"
-        onclick="UI.nav('topic',{id:'${t.id}'})" title="Drag to reorder">📄 ${esc(t.name)}</div>`).join('') || '<div class="subtle" style="padding:4px 8px;">No topics</div>'}</div>` : ''}
+        onclick="UI.nav('topic',{id:'${t.id}'})" title="Drag to reorder">📄 ${esc(t.name)}
+        <span class="del-mini" onclick="event.stopPropagation();Courses.deleteTopic('${t.id}')" title="Delete this topic">✕</span></div>`).join('') || '<div class="subtle" style="padding:4px 8px;">No topics</div>'}</div>` : ''}
     </div>`;
   }
 };
@@ -477,35 +552,36 @@ const Notes = {
     return `
     <div class="two-col">
       <div>
-        <input class="note-title-input" value="${esc(note.title)}" oninput="Notes.updateTitle('${id}', this.value)">
+        <input class="note-title-input" value="${esc(note.title)}" oninput="Notes.updateTitle('${id}', this.value)" title="Note title">
         <div class="note-meta-row subtle">
           ${subjectName(note.subjectId)} › ${chapterName(note.chapterId)} › ${topicName(note.topicId)}
         </div>
-        <div class="note-meta-row" style="margin-top:8px;">
+        <div class="note-meta-row" style="margin-top:8px;cursor:pointer;" onclick="Notes.editMeta('${id}')" title="Click to edit importance, exam frequency, status and tags">
           <span class="pill">Importance <span class="stars">${'★'.repeat(note.importance)}${'☆'.repeat(5 - note.importance)}</span></span>
           <span class="pill ${note.examFrequency === 'high' ? 'warn' : ''}">Exam freq: ${note.examFrequency}</span>
           <span class="pill">${note.status}</span>
           ${(note.tags || []).map(t => `<span class="tag">#${esc(t)}</span>`).join('')}
+          <span class="tag" style="border-style:dashed;">✎ edit</span>
         </div>
         <div class="editor-toolbar">
-          <button onclick="document.execCommand('bold')" aria-label="Bold"><b>B</b></button>
-          <button onclick="document.execCommand('italic')" aria-label="Italic"><i>I</i></button>
-          <button onclick="document.execCommand('underline')" aria-label="Underline"><u>U</u></button>
-          <button onclick="document.execCommand('strikeThrough')" aria-label="Strikethrough"><s>S</s></button>
+          <button onclick="document.execCommand('bold')" aria-label="Bold" title="Bold (Ctrl/Cmd+B)"><b>B</b></button>
+          <button onclick="document.execCommand('italic')" aria-label="Italic" title="Italic (Ctrl/Cmd+I)"><i>I</i></button>
+          <button onclick="document.execCommand('underline')" aria-label="Underline" title="Underline (Ctrl/Cmd+U)"><u>U</u></button>
+          <button onclick="document.execCommand('strikeThrough')" aria-label="Strikethrough" title="Strikethrough"><s>S</s></button>
           <div class="sep"></div>
-          <button onclick="document.execCommand('formatBlock',false,'H2')">H2</button>
-          <button onclick="document.execCommand('formatBlock',false,'H3')">H3</button>
-          <button onclick="document.execCommand('formatBlock',false,'P')">¶</button>
+          <button onclick="document.execCommand('formatBlock',false,'H2')" title="Heading 2 — large section heading">H2</button>
+          <button onclick="document.execCommand('formatBlock',false,'H3')" title="Heading 3 — smaller sub-heading">H3</button>
+          <button onclick="document.execCommand('formatBlock',false,'P')" title="Paragraph — plain body text">¶</button>
           <div class="sep"></div>
-          <button onclick="document.execCommand('insertUnorderedList')">• List</button>
-          <button onclick="document.execCommand('insertOrderedList')">1. List</button>
-          <button onclick="document.execCommand('formatBlock',false,'BLOCKQUOTE')">❝ Quote</button>
-          <button onclick="document.execCommand('insertHorizontalRule')">―</button>
+          <button onclick="document.execCommand('insertUnorderedList')" title="Bullet list">• List</button>
+          <button onclick="document.execCommand('insertOrderedList')" title="Numbered list">1. List</button>
+          <button onclick="document.execCommand('formatBlock',false,'BLOCKQUOTE')" title="Quote block — for asides or exact wording">❝ Quote</button>
+          <button onclick="document.execCommand('insertHorizontalRule')" title="Horizontal rule — divides the note into sections">―</button>
           <div class="sep"></div>
-          <button onclick="Notes.insertTable('${id}')">▦ Table</button>
-          <button onclick="Notes.insertLink()">🔗 Link</button>
+          <button onclick="Notes.insertTable('${id}')" title="Insert a 2×2 table">▦ Table</button>
+          <button onclick="Notes.insertLink()" title="Turn selected text into a link">🔗 Link</button>
           <div class="sep"></div>
-          <button onclick="Focus.enter()" title="Focus Mode">🕶 Focus</button>
+          <button onclick="Focus.enter()" title="Focus Mode — hide the sidebar and menus for distraction-free writing (Esc to exit)">🕶 Focus</button>
         </div>
         <div class="editor-body" id="editorBody" contenteditable="true" aria-label="Note content"
              oninput="Notes.onEdit('${id}')" onmouseup="Notes.onSelect(event,'${id}')" onkeyup="Notes.onSelect(event,'${id}')">${note.content}</div>
@@ -1057,14 +1133,14 @@ const Pdfs = {
       <div class="pdf-toolbar">
         <b>${esc(rec.title)}</b>
         <div class="spacer"></div>
-        <button class="icon-btn" onclick="Pdfs.prevPage()">‹ Prev</button>
+        <button class="icon-btn" onclick="Pdfs.prevPage()" title="Previous page">‹ Prev</button>
         <span id="pdfPageLabel" class="subtle">Page 1 / ${rec.pageCount || '?'}</span>
-        <button class="icon-btn" onclick="Pdfs.nextPage()">Next ›</button>
-        <button class="icon-btn" onclick="Pdfs.zoom(-0.15)">−</button>
-        <button class="icon-btn" onclick="Pdfs.zoom(0.15)">+</button>
-        <button class="icon-btn" onclick="Pdfs.bookmarkPage('${id}')">🔖 Bookmark page</button>
-        <button class="icon-btn" id="stickyBtn" onclick="Pdfs.toggleStickyMode()">📌 Sticky note</button>
-        <button class="icon-btn" id="splitBtn" onclick="Pdfs.toggleSplit()">📝 Split with Notes</button>
+        <button class="icon-btn" onclick="Pdfs.nextPage()" title="Next page">Next ›</button>
+        <button class="icon-btn" onclick="Pdfs.zoom(-0.15)" title="Zoom out" aria-label="Zoom out">−</button>
+        <button class="icon-btn" onclick="Pdfs.zoom(0.15)" title="Zoom in" aria-label="Zoom in">+</button>
+        <button class="icon-btn" onclick="Pdfs.bookmarkPage('${id}')" title="Bookmark this page for quick return">🔖 Bookmark page</button>
+        <button class="icon-btn" id="stickyBtn" onclick="Pdfs.toggleStickyMode()" title="Click a spot on the page to drop a sticky note there">📌 Sticky note</button>
+        <button class="icon-btn" id="splitBtn" onclick="Pdfs.toggleSplit()" title="Dock a note editor beside the PDF, for taking notes while you read">📝 Split with Notes</button>
         <span class="subtle" style="font-size:11.5px;">Select text to highlight/underline</span>
       </div>
       <div style="display:flex;flex:1;overflow:hidden;">
@@ -1864,27 +1940,27 @@ const Dashboard = {
       <p class="ledger-date">${dateStr}</p>
       <h2 class="ledger-greeting">${greeting}. Here's today's entry.</h2>
       <div class="ledger-rows">
-        <div class="ledger-row"><span class="lr-label">Study time logged today</span><span class="lr-leader"></span><span class="lr-value">${todayMins} min</span></div>
-        <div class="ledger-row"><span class="lr-label">Notes in the ledger</span><span class="lr-leader"></span><span class="lr-value">${notes.length}</span></div>
-        <div class="ledger-row"><span class="lr-label">Revision due today</span><span class="lr-leader"></span><span class="lr-value ${due.length ? 'flag' : ''}">${due.length}</span></div>
+        <div class="ledger-row" title="Total minutes logged via the Study Timer today"><span class="lr-label">Study time logged today</span><span class="lr-leader"></span><span class="lr-value">${todayMins} min</span></div>
+        <div class="ledger-row" title="Total notes across all your courses"><span class="lr-label">Notes in the ledger</span><span class="lr-leader"></span><span class="lr-value">${notes.length}</span></div>
+        <div class="ledger-row" title="Notes and flashcards scheduled for review today"><span class="lr-label">Revision due today</span><span class="lr-leader"></span><span class="lr-value ${due.length ? 'flag' : ''}">${due.length}</span></div>
       </div>
-      ${due.length ? `<div style="margin-top:16px;"><button class="btn sm" onclick="UI.nav('revision')">Start Revision</button></div>` : ''}
+      ${due.length ? `<div style="margin-top:16px;"><button class="btn sm" onclick="UI.nav('revision')" title="Go to the revision queue">Start Revision</button></div>` : ''}
     </div>
     <h3>Continue studying</h3>
-    ${recentNotes.length ? recentNotes.map(n => `<div class="list-row" onclick="UI.nav('note',{id:'${n.id}'})">
+    ${recentNotes.length ? recentNotes.map(n => `<div class="list-row" onclick="UI.nav('note',{id:'${n.id}'})" title="Open this note">
       <span>📝</span><div style="flex:1;">${esc(n.title)}<div class="subtle">${subjectName(n.subjectId)} · updated ${fmtDateShort(n.updatedAt || n.createdAt)}</div></div>
     </div>`).join('') : `<div class="subtle">No notes yet — create your first one.</div>`}
     <h3 style="margin-top:22px;">Subject progress</h3>
-    ${progress.length ? progress.map(p => `<div style="margin-bottom:10px;">
+    ${progress.length ? progress.map(p => `<div style="margin-bottom:10px;" title="Share of this subject's notes marked as mastered">
       <div style="display:flex;justify-content:space-between;font-size:13.5px;"><span>${esc(p.subject.name)}</span><span class="subtle" style="font-family:var(--mono);">${p.pct}%</span></div>
       <div class="progress-bar"><div style="width:${p.pct}%"></div></div>
     </div>`).join('') : `<div class="subtle">Add subjects to a course to see progress.</div>`}
     <h3 style="margin-top:22px;">Quick actions</h3>
     <div class="note-meta-row">
-      <button class="btn secondary sm" onclick="Notes.promptNew()">+ New Note</button>
-      <button class="btn secondary sm" onclick="UI.nav('pdfs')">+ Import PDF</button>
-      <button class="btn secondary sm" onclick="Mnemonics.promptNew()">+ Add Mnemonic</button>
-      <button class="btn secondary sm" onclick="Questions.promptNew()">+ Add Question</button>
+      <button class="btn secondary sm" onclick="Notes.promptNew()" title="Create a new note">+ New Note</button>
+      <button class="btn secondary sm" onclick="UI.nav('pdfs')" title="Go to the PDF library to upload one">+ Import PDF</button>
+      <button class="btn secondary sm" onclick="Mnemonics.promptNew()" title="Create a new memory aid">+ Add Mnemonic</button>
+      <button class="btn secondary sm" onclick="Questions.promptNew()" title="Add a question to your question bank">+ Add Question</button>
     </div>`;
   }
 };
@@ -1901,11 +1977,14 @@ function TopicView(id) {
   const relatedPdfs = (Cache.pdfs || []).filter(p => chapter && p.subjectId === chapter.subjectId);
   return `
   <div class="subtle">${subjectName(chapter?.subjectId)} › ${esc(chapter?.name || '')}</div>
-  <h2 style="margin-top:2px;">${esc(topic.name)}</h2>
+  <div style="display:flex;justify-content:space-between;align-items:baseline;">
+    <h2 style="margin-top:2px;">${esc(topic.name)}</h2>
+    <button class="btn sm danger" onclick="Courses.deleteTopic('${id}')" title="Delete this topic and everything inside it">Delete topic</button>
+  </div>
   <div class="note-meta-row" style="margin-bottom:16px;">
-    <button class="btn sm" onclick="Notes.promptNew('${id}')">+ Note</button>
-    <button class="btn sm secondary" onclick="Mnemonics.promptNew('${id}')">+ Mnemonic</button>
-    <button class="btn sm secondary" onclick="Questions.promptNew('${id}')">+ Question</button>
+    <button class="btn sm" onclick="Notes.promptNew('${id}')" title="Create a note in this topic">+ Note</button>
+    <button class="btn sm secondary" onclick="Mnemonics.promptNew('${id}')" title="Create a mnemonic linked to this topic">+ Mnemonic</button>
+    <button class="btn sm secondary" onclick="Questions.promptNew('${id}')" title="Add a question linked to this topic">+ Question</button>
   </div>
   <h3>Notes <span class="subtle" style="font-weight:normal;font-size:12px;">(drag to reorder)</span></h3>
   ${notes.length ? notes.map(n => `<div class="list-row" draggable="true"
