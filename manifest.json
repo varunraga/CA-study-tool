@@ -1,0 +1,23 @@
+{
+  "name": "CA Study — Revision Workspace",
+  "short_name": "CA Study",
+  "description": "Convert study material into structured, searchable, annotated revision notes for CA exam preparation.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#faf9f6",
+  "theme_color": "#faf9f6",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='34' fill='%23374151'/%3E%3Ctext x='96' y='128' font-size='100' text-anchor='middle' fill='%23faf9f6' font-family='Georgia,serif'%3ECA%3C/text%3E%3C/svg%3E",
+      "sizes": "192x192",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='90' fill='%23374151'/%3E%3Ctext x='256' y='340' font-size='260' text-anchor='middle' fill='%23faf9f6' font-family='Georgia,serif'%3ECA%3C/text%3E%3C/svg%3E",
+      "sizes": "512x512",
+      "type": "image/svg+xml"
+    }
+  ]
+}
