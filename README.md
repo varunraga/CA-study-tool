@@ -10,19 +10,20 @@ If you specifically want the React/Vite/Tailwind/Dexie codebase instead (e.g. be
 
 ## Files
 
+**All files sit flat, in one folder together — no subfolders.** (An earlier version of this doc suggested an `icons/` subfolder; that's been dropped, since it's one more thing to get right when uploading and easy to break — see the "Note on paths" below if you're wondering why.)
+
 ```
 ca-study-app/
-  index.html     — shell, layout, all CSS
-  app.js         — all application logic (routing, IndexedDB, every feature module)
-  manifest.json  — PWA manifest
-  sw.js          — service worker (offline caching of the app shell)
-  icons/
-    favicon-16.png, favicon-32.png    — browser tab icon
-    apple-touch-icon.png              — iOS home-screen icon (180×180)
-    icon-192.png, icon-512.png        — standard PWA install icons
-    icon-192-maskable.png, icon-512-maskable.png — Android adaptive-icon safe versions
-    sidebar-logo.png                  — the logo shown in the app's own sidebar
-    logo-source.png                   — the original full-resolution artwork, kept for regenerating any size later
+  index.html                — shell, layout, all CSS
+  app.js                    — all application logic (routing, IndexedDB, every feature module)
+  manifest.json             — PWA manifest
+  sw.js                     — service worker (offline caching of the app shell)
+  favicon-16.png, favicon-32.png    — browser tab icon
+  apple-touch-icon.png              — iOS home-screen icon (180×180)
+  icon-192.png, icon-512.png        — standard PWA install icons
+  icon-192-maskable.png, icon-512-maskable.png — Android adaptive-icon safe versions
+  sidebar-logo.png                  — the logo shown in the app's own sidebar
+  logo-source.png                   — the original full-resolution artwork, kept for regenerating any size later
 ```
 
 ## Run it right now
@@ -37,11 +38,16 @@ python3 -m http.server 8080
 
 ## Deploy it as an installable PWA
 
-Upload the whole folder — the four root files **and** the `icons/` subfolder — to any static host, keeping the same relative structure:
-- **GitHub Pages**: push to a repo, enable Pages on the branch — same approach as your Kriti Notation Studio deployment.
+Upload **all the files together, flat, into the same folder** on any static host — don't put the images in a subfolder:
+- **GitHub Pages**: push to a repo (all files at the repo root, or all inside the same subfolder if you're using one — just keep them together), enable Pages on the branch.
 - **Netlify / Vercel**: drag-and-drop the folder.
 
-Once hosted over HTTPS, visiting the URL will offer "Add to Home Screen" / "Install" on Android, iOS, and desktop Chrome/Edge — using your logo, at the right size for each platform.
+Once hosted over HTTPS, visiting the URL will offer "Add to Home Screen" / "Install" on Android, iOS, and desktop Chrome/Edge — using your logo, at the right size for each platform. If Install doesn't appear, the most likely cause is a broken icon path — open your browser's DevTools → Network tab and check for any 404s on the `.png` files; every manifest icon has to actually load for the browser to consider the app installable.
+
+### Note on paths
+
+The code references every icon as a bare filename (`favicon-32.png`, not `icons/favicon-32.png`) specifically so that uploading everything into one flat folder — the simplest thing to do on GitHub's web upload UI — just works. If you ever reorganize into subfolders, you'd need to update the paths in `index.html`, `manifest.json`, and `sw.js` to match wherever you put things.
+
 
 ### Updating after you've deployed once
 
@@ -66,6 +72,15 @@ Settings → "Google Drive Sync" backs up your **data** (notes, questions, mnemo
 **Diagnosing a 403 or other sync failure**: the error is parsed properly rather than shown as a raw/generic message. The single most common cause of a 403 is the Google Drive API not being **enabled** for the Cloud project the Client ID belongs to (a separate step from creating the Client ID itself) — go to console.cloud.google.com → APIs & Services → Library → "Google Drive API" → Enable. The second most common cause is your account not being added as a test user on the OAuth consent screen. The app detects the "API not enabled" case specifically and tells you that directly.
 
 **Limits worth knowing**: PDFs themselves aren't included (large binary files — same exclusion as the local JSON backup); it's a single continuously-overwritten backup file, not version history (use Drive's own "manage versions" on that file if you want that); and this genuinely could not be end-to-end tested with a real Google account in this build environment — everything short of the actual Google handshake (the UI, the settings flow, the embedded-default behavior, the throttle/trailing sync timing, the status badge across every state transition, error diagnosis logic, graceful failure when offline or not connected, the backup-building/merging logic shared with local export/import) was tested directly and passes, but treat the very first real connect+sync as worth double-checking yourself.
+
+## Mobile & tablet layout
+
+Two real bugs were found and fixed while verifying this:
+
+1. **iPad was being treated as a phone.** The old breakpoint was a flat 860px width, so iPad portrait (768px) got the hamburger-menu-plus-bottom-nav phone treatment instead of a real sidebar. The breakpoint is now a combined rule — narrow width (≤700px, phone portrait) OR short height (≤500px, phone landscape) — so **iPad now shows the full sidebar permanently in both orientations, identical to desktop**, while phones still get the compact hamburger+bottom-nav pattern.
+2. **The PDF viewer could inflate the entire page width on narrow screens** (and, in principle, on any screen showing a PDF wider than expected). Root cause: the `pdf` route renders asynchronously and has an early `return`, which meant it skipped resetting `#content`'s CSS class — leaving a stale `narrow` class (`max-width:760px; margin:auto`) behind from whatever page was open before it, which combined with the PDF canvas's own pixel dimensions to push the whole app wider than the viewport. Fixed at the source, plus the canvas/side-panel area now stacks vertically instead of squeezing side-by-side on phones, so the PDF actually gets usable width to read.
+
+Verified across iPhone portrait/landscape and iPad portrait/landscape: every route swept for horizontal overflow (none found), the PDF viewer specifically screenshotted before/after, and the full functional regression suite (highlighting, sticky notes, split-view, flashcards, exam mode, drag-reorder, cascade-delete) re-run against the changed files.
 
 ## Design
 

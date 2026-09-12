@@ -6,20 +6,20 @@
 // always get the latest index.html/app.js straight away; the cache is
 // only a fallback for when you're offline. Bump CACHE_NAME whenever you
 // deploy a new version so old caches get cleared out automatically.
-const CACHE_NAME = 'castudy-cache-v3';
+const CACHE_NAME = 'castudy-cache-v4';
 const APP_SHELL = [
   './',
   './index.html',
   './app.js',
   './manifest.json',
-  './icons/sidebar-logo.png',
-  './icons/favicon-32.png',
-  './icons/favicon-16.png',
-  './icons/apple-touch-icon.png',
-  './icons/icon-192.png',
-  './icons/icon-512.png',
-  './icons/icon-192-maskable.png',
-  './icons/icon-512-maskable.png'
+  './sidebar-logo.png',
+  './favicon-32.png',
+  './favicon-16.png',
+  './apple-touch-icon.png',
+  './icon-192.png',
+  './icon-512.png',
+  './icon-192-maskable.png',
+  './icon-512-maskable.png'
 ];
 
 self.addEventListener('install', (event) => {

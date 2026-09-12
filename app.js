@@ -8,6 +8,8 @@ const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 
 const nowISO = () => new Date().toISOString();
 const fmtDate = (iso) => iso ? new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
 const fmtDateShort = (iso) => iso ? new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '—';
+const MOBILE_LAYOUT_QUERY = '(max-width:700px), (max-width:1024px) and (max-height:500px)';
+function isMobileLayout() { return window.matchMedia(MOBILE_LAYOUT_QUERY).matches; }
 function relTime(iso) {
   if (!iso) return '';
   const mins = Math.floor(Math.max(0, Date.now() - new Date(iso).getTime()) / 60000);
@@ -1153,7 +1155,7 @@ const Pdfs = {
     setTimeout(() => Pdfs.load(rec), 30);
     pdfSplitMode = false; pdfSplitNoteId = null;
     return `
-    <div style="display:flex;flex-direction:column;height:calc(100vh - 54px);margin:-24px -28px;">
+    <div class="pdf-shell">
       <div class="pdf-toolbar">
         <b>${esc(rec.title)}</b>
         <div class="spacer"></div>
@@ -1167,7 +1169,7 @@ const Pdfs = {
         <button class="icon-btn" id="splitBtn" onclick="Pdfs.toggleSplit()" title="Dock a note editor beside the PDF, for taking notes while you read">📝 Split with Notes</button>
         <span class="subtle" style="font-size:11.5px;">Select text to highlight/underline</span>
       </div>
-      <div style="display:flex;flex:1;overflow:hidden;">
+      <div class="pdf-body-row">
         <div class="pdf-canvas-wrap" id="pdfCanvasWrap">
           <div class="pdf-page-wrap" id="pdfPageWrap" onclick="Pdfs.handlePageClick(event)" title="Select text to highlight/underline, or click to place a sticky note when Sticky Note mode is on">
             <canvas id="pdfCanvas"></canvas>
@@ -1175,7 +1177,7 @@ const Pdfs = {
             <div class="pdf-hl-overlay" id="pdfHlOverlay"></div>
           </div>
         </div>
-        <div style="width:220px;border-left:1px solid var(--border);padding:12px;overflow-y:auto;background:var(--bg-elev);flex-shrink:0;" id="pdfRightPanel">
+        <div class="pdf-right-panel" id="pdfRightPanel">
           ${Pdfs.sidePanelHTML(id)}
         </div>
       </div>
@@ -1366,7 +1368,7 @@ const Pdfs = {
     pdfSplitMode = !pdfSplitMode;
     document.getElementById('splitBtn')?.classList.toggle('active-toggle', pdfSplitMode);
     const panel = document.getElementById('pdfRightPanel'); if (!panel) return;
-    panel.style.width = pdfSplitMode ? '380px' : '220px';
+    if (!isMobileLayout()) panel.style.width = pdfSplitMode ? '380px' : '220px';
     panel.innerHTML = pdfSplitMode ? Pdfs.splitNotesHTML() : Pdfs.sidePanelHTML(UI.params.id);
   },
   splitNotesHTML() {
@@ -1461,7 +1463,7 @@ const CmdK = {
       run: () => {
         CmdK.close();
         Tree.expanded.add(s.courseId); Tree.expanded.add(s.id); Tree.render();
-        if (window.innerWidth <= 860) UI.toggleSidebar();
+        if (isMobileLayout()) UI.toggleSidebar();
       }
     }));
     return Commands.concat(dynamic);
@@ -2300,7 +2302,7 @@ const Router = {
       case 'topic': html = TopicView(UI.params.id); break;
       case 'note': html = Notes.render(UI.params.id); break;
       case 'pdfs': html = Pdfs.renderLibrary(); break;
-      case 'pdf': el.innerHTML = ''; Pdfs.renderViewer(UI.params.id).then(h => { el.innerHTML = h; }); return;
+      case 'pdf': el.className = 'content'; el.innerHTML = ''; Pdfs.renderViewer(UI.params.id).then(h => { el.innerHTML = h; }); return;
       case 'mnemonics': html = Mnemonics.render(); break;
       case 'jargons': html = Jargons.render(); break;
       case 'questions': html = Questions.render(); break;
@@ -2314,7 +2316,6 @@ const Router = {
       default: html = Dashboard.render();
     }
     el.className = 'content' + (['note'].includes(UI.route) ? '' : ' narrow');
-    if (UI.route === 'pdf') el.className = 'content';
     el.innerHTML = html;
     updateRevBadge();
   }
@@ -2387,9 +2388,10 @@ async function boot() {
   Theme.apply();
   Tree.render();
   UI.nav('dashboard');
-  if (window.innerWidth <= 860) document.getElementById('menuBtn').style.display = '';
-  document.getElementById('menuBtn').style.display = window.innerWidth <= 860 ? 'inline-flex' : 'none';
-  window.addEventListener('resize', () => { document.getElementById('menuBtn').style.display = window.innerWidth <= 860 ? 'inline-flex' : 'none'; });
+  const syncMenuBtn = () => { document.getElementById('menuBtn').style.display = isMobileLayout() ? 'inline-flex' : 'none'; };
+  syncMenuBtn();
+  window.addEventListener('resize', syncMenuBtn);
+  window.addEventListener('orientationchange', () => setTimeout(syncMenuBtn, 50));
   if ('serviceWorker' in navigator) {
     // When a newly-deployed version's service worker takes over (it skips
     // waiting and claims control automatically — see sw.js), reload once so
