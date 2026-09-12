@@ -240,8 +240,9 @@ hr.sep{border:none;border-top:1px solid var(--border);margin:20px 0;}
 .kbd{border:1px solid var(--border);border-bottom-width:2px;border-radius:5px;padding:1px 6px;font-size:11px;font-family:var(--mono);background:var(--bg-elev-2);}
 
 /* FOCUS MODE (DARK ROOM) */
-body.focus-mode .sidebar, body.focus-mode .topbar, body.focus-mode .bottom-nav { display: none !important; }
-body.focus-mode .content { max-width: 720px; margin: 0 auto; padding-top: 50px; }
+body.focus-mode .sidebar, body.focus-mode .topbar, body.focus-mode .bottom-nav, body.focus-mode .inspector { display: none !important; }
+body.focus-mode .two-col { grid-template-columns: 1fr; }
+body.focus-mode .content { max-width: 780px; margin: 0 auto; padding-top: 50px; }
 .focus-exit-btn{position:fixed;top:14px;right:14px;z-index:80;}
 
 /* ACCESSIBILITY */

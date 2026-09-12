@@ -28,6 +28,35 @@ function stripHtml(html) {
   div.innerHTML = html || '';
   return (div.textContent || div.innerText || '').replace(/\s+/g, ' ').trim();
 }
+/* Rich-text toolbar extras (undo/redo, superscript, font color) — shared
+   between the main note editor and the PDF "Split with Notes" editor, since
+   both are plain contenteditable regions using the same execCommand API.
+   Font color needs special care: opening the native <input type=color>
+   picker blurs the contenteditable and clears its selection in most
+   browsers, so we save the Range on mousedown and restore it on change,
+   right before applying the color. */
+let _savedEditorRange = null;
+function saveEditorSelection() {
+  const sel = window.getSelection();
+  if (sel && sel.rangeCount > 0) _savedEditorRange = sel.getRangeAt(0).cloneRange();
+}
+function applyColorToSelection(color) {
+  const sel = window.getSelection();
+  if (_savedEditorRange) { sel.removeAllRanges(); sel.addRange(_savedEditorRange); }
+  document.execCommand('foreColor', false, color);
+}
+function richTextExtrasHTML() {
+  const colors = ['#E5534B', '#D9B24C', '#4FAE71', '#5B9BE0', '#B07CD9'];
+  return `
+    <button onmousedown="event.preventDefault();document.execCommand('superscript')" title="Superscript — e.g. numbering a point (¹ ² ³) or a footnote marker">x²</button>
+    <div class="sep"></div>
+    ${colors.map(c => `<span class="draw-color-dot" style="background:${c};" onmousedown="event.preventDefault();document.execCommand('foreColor',false,'${c}')" title="Text color"></span>`).join('')}
+    <input type="color" onmousedown="saveEditorSelection()" onchange="applyColorToSelection(this.value)" title="Custom text color" style="width:22px;height:22px;padding:0;border:1px solid var(--border);border-radius:6px;background:none;cursor:pointer;vertical-align:middle;">
+    <button onmousedown="event.preventDefault();document.execCommand('foreColor',false,getComputedStyle(document.body).color)" title="Reset text color to default">Aa</button>
+    <div class="sep"></div>
+    <button onmousedown="event.preventDefault();document.execCommand('undo')" title="Undo (Ctrl/Cmd+Z)">↶ Undo</button>
+    <button onmousedown="event.preventDefault();document.execCommand('redo')" title="Redo (Ctrl/Cmd+Shift+Z, or Ctrl+Y)">↷ Redo</button>`;
+}
 function downloadText(filename, text, mime) {
   const blob = new Blob([text], { type: mime || 'text/plain' });
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename; a.click();
@@ -596,6 +625,8 @@ const Notes = {
           <button onclick="document.execCommand('italic')" aria-label="Italic" title="Italic (Ctrl/Cmd+I)"><i>I</i></button>
           <button onclick="document.execCommand('underline')" aria-label="Underline" title="Underline (Ctrl/Cmd+U)"><u>U</u></button>
           <button onclick="document.execCommand('strikeThrough')" aria-label="Strikethrough" title="Strikethrough"><s>S</s></button>
+          <div class="sep"></div>
+          ${richTextExtrasHTML()}
           <div class="sep"></div>
           <button onclick="document.execCommand('formatBlock',false,'H2')" title="Heading 2 — large section heading">H2</button>
           <button onclick="document.execCommand('formatBlock',false,'H3')" title="Heading 3 — smaller sub-heading">H3</button>
@@ -1646,8 +1677,15 @@ const Pdfs = {
         <b style="font-size:13px;">${esc(n.title)}</b>
         <button class="icon-btn" onclick="Pdfs.pickSplitNote('')" title="Change note" aria-label="Change note">↺</button>
       </div>
+      <div class="editor-toolbar" style="position:static;margin:8px 0 4px;">
+        <button onmousedown="event.preventDefault();document.execCommand('bold')" title="Bold"><b>B</b></button>
+        <button onmousedown="event.preventDefault();document.execCommand('italic')" title="Italic"><i>I</i></button>
+        <button onmousedown="event.preventDefault();document.execCommand('underline')" title="Underline"><u>U</u></button>
+        <div class="sep"></div>
+        ${richTextExtrasHTML()}
+      </div>
       <div class="editor-body" id="splitEditorBody" contenteditable="true" aria-label="Split note content"
-        style="min-height:calc(100vh - 240px);font-size:14px;margin-top:8px;" oninput="Pdfs.onSplitEdit()">${n.content}</div>
+        style="min-height:calc(100vh - 300px);font-size:14px;" oninput="Pdfs.onSplitEdit()">${n.content}</div>
       <div class="save-status" id="splitSaveStatus" style="margin-top:4px;">Saved</div>`;
   },
   pickSplitNote(id) { pdfSplitNoteId = id || null; const panel = document.getElementById('pdfRightPanel'); if (panel) panel.innerHTML = Pdfs.splitNotesHTML(); },

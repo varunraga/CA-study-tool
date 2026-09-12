@@ -51,10 +51,15 @@ You'll be asked for a title and which topic it belongs to, then dropped straight
 
 **The toolbar** (hover any button to see exactly what it does):
 `B` `I` `U` `S` — bold, italic, underline, strikethrough
+`x²` — superscript, for numbering points, footnote markers, or exponents (e.g. "point 1️⃣", "x²")
+**5 colored dots + a custom color swatch + "Aa"** — select text, then click a color to change its font color; the custom swatch opens your system's color picker for anything else; "Aa" resets the selection back to the default text color
+`↶ Undo` `↷ Redo` — in addition to the standard Ctrl/Cmd+Z keyboard shortcut, these are explicit buttons so undo/redo is always one click away, no keyboard required
 `H2` `H3` `¶` — heading, sub-heading, plain paragraph
 `• List` `1. List` `❝ Quote` `―` — bullet list, numbered list, quote block, horizontal divider
 `▦ Table` `🔗 Link` — insert a table, turn selected text into a link
-`🕶 Focus` — hide the sidebar/menus for distraction-free writing (press **Esc** to exit)
+`🕶 Focus` — hide the sidebar, top bar, *and* the note's own inspector panel, so the writing area expands to fill the space (press **Esc** to exit)
+
+The same color/superscript/undo/redo toolbar is also available in the PDF "Split with Notes" editor (§10) — it's a real rich-text editor too, not just a plain text box. It's **not** available on PDF sticky notes or text annotations, which are simple one-line text prompts by design.
 
 **Note metadata**: just below the title, click the row of pills (Importance, Exam freq, status, tags) — it's clickable (look for the "✎ edit" tag) and opens a form to set:
 - **Importance** (1–5 stars)
@@ -217,7 +222,7 @@ Sidebar → Settings:
 
 **Study Timer** (sidebar): Pomodoro-style — 25/5, 50/10, or a custom duration. Start/Reset. Completed sessions are logged and feed into the Dashboard's "study time today" figure.
 
-**Focus Mode**: from inside a note, click **"🕶 Focus"** in the editor toolbar. This hides the sidebar and top bar entirely so it's just you and the note. Press **Esc** or click the floating "✕ Exit Focus" button to come back.
+**Focus Mode**: from inside a note, click **"🕶 Focus"** in the editor toolbar. This hides the sidebar, top bar, and the note's own right-hand inspector panel — the writing area expands to use the freed-up space, rather than just floating in a narrower page. Press **Esc** or click the floating "✕ Exit Focus" button to come back.
 
 ---
 
