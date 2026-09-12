@@ -1,13 +1,13 @@
 {
-  "name": "CA Study — Working Ledger",
+  "name": "CA Study — The Reading Room",
   "short_name": "CA Study",
   "description": "Convert study material into structured, searchable, annotated revision notes for CA exam preparation.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",
-  "background_color": "#EFF2E8",
-  "theme_color": "#EFF2E8",
+  "background_color": "#0D0F13",
+  "theme_color": "#0D0F13",
   "icons": [
     {
       "src": "icon-192.png",

@@ -84,11 +84,13 @@ Verified across iPhone portrait/landscape and iPad portrait/landscape: every rou
 
 ## Design
 
-The interface was given a full visual identity pass: "Working Ledger" — grounded in actual accounting practice (ledger paper, ink, brass seals, dotted leader-lines) rather than a generic SaaS look. Pale sage ledger-paper background with a subtle ruled-paper texture, deep ink-green text, a brass/gold primary accent (seals, stamps, primary buttons), and red-ink for alerts/danger. Headings use IBM Plex Serif (an official, certificate-like feel); UI text uses IBM Plex Sans; **every number, date, and figure uses IBM Plex Mono** — a deliberate choice, since accountants align figures in columns. The sidebar reads like a ledger's tab index (brass spine strip, tab-style active states); the Dashboard opens with a "Today's Entry" journal spread — the one bold, memorable design move — instead of generic stat cards. Both light ("day ledger") and dark ("night ledger") themes are fully covered.
+**Current identity — "The Reading Room"** (second full visual pass): a premium, dark-first "private study" aesthetic — replacing the earlier cream-and-brass "Working Ledger" look with something intentionally richer and more aspirational, on the request to make the app feel motivating to open, not just usable. Deep obsidian background (`#0D0F13`) with a warm gold accent (gradient from `#F0CD73` to `#D9B24C`) used for primary buttons, active states, and a soft glow on hover — evoking a well-appointed private study rather than a spreadsheet. **Dark is now the default theme** (a deliberate choice — premium productivity apps read this way), with a fully-designed warm-ivory light mode alongside it, toggleable exactly as before.
 
-Two follow-up refinements: **highlight colors** were originally too faint (low-opacity pastels) to notice at a glance — they're now solid, saturated highlighter colors, clearly visible in both themes. And **hover tooltips** were added throughout — every icon-only button (editor toolbar, PDF toolbar, topbar) and every main navigation item now shows what it does on hover, using the browser's native tooltip. The note-importance/exam-frequency/status pills at the top of a note are now clickable too (wired up to an editing form that existed in the code but was never actually reachable from the UI before).
+Typography changed too: **Fraunces** (an expressive, characterful serif with real personality) for headings — a different register from the previous IBM Plex Serif's institutional feel — paired with **Manrope** for UI text and **JetBrains Mono** for every number and date, same rationale as before (figures deserve tabular alignment) with a more contemporary mono face.
 
-A third round: the note inspector's section labels ("Highlight legend," "Annotations," "Revision," etc.) were muted italic text that barely read as headings — they're now bold, full-color, with an underline rule, so they stand out properly. And tooltips now cover **every single interactive control in the app** — every button, dropdown, and text field, not just the ones that seemed most ambiguous at the time.
+The one bold, memorable move: the Dashboard's "Today's Entry" ledger-journal hero is gone, replaced by a **"Today's Focus" hero** — a glowing gold circular progress ring showing your overall note-mastery percentage, alongside your study streak (🔥) and revision-due count as bold stat numbers. It's meant to feel like a small reward each time you open the app, not just a status readout. The sidebar's ledger-tab motif (dotted lines, tab-style borders) is gone too, replaced by clean rounded pill-style navigation with a soft glow on the active item — and every dotted "ledger rule" line across the app (list rows, inspector dividers, `<hr>`s) is now a clean solid line, consistent with the less overtly "paper" feel.
+
+Everything else from prior rounds carries forward unchanged: saturated, clearly-visible highlight colors; tooltips on every single interactive control; the clickable note-metadata pills.
 
 ## Data & privacy
 
@@ -113,7 +115,7 @@ Everything is stored locally in the browser's IndexedDB (database `castudy`) —
 - Spaced-repetition revision engine (configurable intervals, Again/Hard/Good/Easy) driving a Dashboard "due today" count and a flashcard-style Revision session — Notes (rated from inside the note) + the auto-generated flashcard deck, labeled by source
 - **Full Search page** (filters by content type and subject, sorts by relevance/newest/alphabetical) alongside the quick **Command Palette** (Ctrl/Cmd+K) — which also runs typeable commands: New Note, New Course, Import PDF, Add Mnemonic/Jargon/Question, Start Revision, Exam Mode, Last-Minute Revision, Focus Mode, jump to any section, Export Backup, Toggle Dark Mode, and a dynamic "Go to subject: X" per subject
 - PDF Library: upload (optionally tagged with a subject, which powers related-content links), IndexedDB storage, PDF.js-based viewer with page navigation and zoom
-- **PDF annotation layer**: select text on any page to highlight (6 colors) or underline it — stored as a coordinate-based layer so it re-scales correctly at any zoom and the original PDF file is never touched; sticky notes can be dropped anywhere on a page; both are listed per-page in a side panel and editable/deletable via a popover; page bookmarks live in the same panel
+- **PDF annotation layer**: select text on any page to highlight (6 colors) or underline it — stored as a coordinate-based layer so it re-scales correctly at any zoom and the original PDF file is never touched; sticky notes can be dropped anywhere on a page; **freehand drawing, arrows, and rectangles** too — pick a color, draw with the mouse/touch, undo the last stroke or clear the whole page, all stored the same zoom-safe way; everything is listed per-page in a side panel and editable/deletable via a popover; page bookmarks live in the same panel
 - **PDF + Notes split view**: toggle "Split with Notes" in the PDF toolbar to dock a note editor next to the PDF (pick an existing note for that subject, or create one) without losing your current page or zoom level
 - Bookmarks (notes, PDFs)
 - **Exam Mode**: pick a subject/difficulty, attempt each question under a per-question timer (minutes-per-mark, configurable) — MCQ/True-False/Fill-in-Blank questions are answered with the real input and auto-graded; free-text questions are self-graded against the model answer — ends in a summary with every question listed
@@ -124,26 +126,31 @@ Everything is stored locally in the browser's IndexedDB (database `castudy`) —
 - Dark mode, responsive layout (desktop sidebar+inspector, tablet, mobile bottom-nav + drawer), demo data seeded on first run
 - Installable PWA with offline app-shell caching once deployed to a static host
 - Basic accessibility pass: visible focus outlines, `prefers-reduced-motion` support, aria-labels on icon-only buttons, dialog roles on modals
+- **Burned-in annotated PDF export**: "⬇ Export PDF" in the PDF toolbar downloads a copy of the current PDF with every highlight, underline, and drawing (pen/arrow/rectangle) permanently drawn onto the actual pages via pdf-lib — real vector content, not a screenshot, so the original PDF's text stays selectable/searchable in the exported copy. The PDF in your library is never touched; this only affects the downloaded copy.
+- **Bulk Markdown exports** (Settings → Readable Exports): one file with every note, organized by subject and chapter; another with every highlight, annotation, and sticky note across your notes and PDFs, grouped by type. Meant for reading/printing/sharing outside the app — separate from the JSON backup, which is meant for restoring back into it.
+- **Analytics**: study streaks (current + longest, computed from study-timer sessions and revision ratings), a 30-day activity heatmap, weak topics (ranked by difficult-marked notes + incorrectly-answered questions) and strong topics (mastered notes + correct questions), and a per-subject breakdown of mastery/accuracy percentages. Built entirely from data you're already generating by using the app normally — no separate tracking to maintain. Flashcards now keep a rating history too (previously only notes did), specifically so the streak calculation has a complete picture.
 
 ## Known limitations (honestly, not glossed over)
 
-- **Freehand drawing / shapes / arrows on PDFs** — still not implemented. Text highlighting, underlining, and sticky notes are (see above); drawing arbitrary ink on a page is a separate, larger feature (canvas-based drawing layer + undo stack).
 - **No cloud sync / multi-device** — this is local-first only, matching the brief's "can work without a backend" requirement, but there's no Supabase/Firebase layer. Every feature module reads/writes through one `saveItem(store, obj)` function, which is the seam to swap in a real backend later.
 - **No OCR, no AI features** — neither was required for v1; both need either a heavy new library (OCR) or an external API (AI) that this environment can't wire up unprompted. The code is modular enough (a clean `AIService`-shaped seam) to add later.
 - **Word (.docx) import isn't supported** — only .txt, .md, and .html. A real .docx-to-HTML conversion needs a parsing library beyond what's reasonable to hand-roll here.
 - **Rich text editor uses `document.execCommand`** — simple and reliable for this feature set, but a legacy browser API. A TipTap/ProseMirror-based editor (as originally specified) would be a natural upgrade if note-taking needs grow more advanced.
-- **No burned-in annotated PDF export** — you can export a note's content (Markdown/HTML) and the full JSON backup, but not a PDF with highlights permanently rendered into it.
 - **No deep study analytics** (weak/strong topics, revision-consistency streaks over time) beyond what the Dashboard and subject-progress bars already show.
 - **No iPad-specific split-screen chrome** beyond the existing responsive breakpoints — the PDF+Notes split view covers the main "read and take notes side by side" use case on any screen size, but there's no dedicated two-finger-gesture or Apple Pencil handling.
 - **Sticky notes on regular notes (not PDFs) were deliberately skipped** — notes already have inline text-anchored annotations, and a second, separately-draggable sticky-note layer on top of rich text would mostly duplicate that without adding much; PDFs got real sticky notes because PDFs don't have inline annotations any other way.
 
 ## Recommended next steps, in priority order
 
-1. Cloud sync (Supabase is the lowest-friction option given the local-first repository-style structure).
-2. Freehand PDF drawing/annotation layer.
-3. .docx import (via a client-side docx-to-HTML library).
-4. Burned-in annotated PDF export.
-5. AI features, once you're ready to wire up an API key (`AIService.summarize()`, `.generateMnemonic()`, `.generateFlashcards()`, etc.).
+1. ~~Freehand PDF drawing/annotation layer.~~ — done.
+2. ~~Burned-in annotated PDF export.~~ — done.
+3. ~~Bulk export (all notes as one Markdown file; all highlights/annotations as one file).~~ — done.
+4. ~~Deeper study analytics (weak/strong topics, revision-consistency streaks).~~ — done.
+5. Cloud sync to a real backend beyond Google Drive (Supabase is the lowest-friction option given the local-first repository-style structure).
+6. .docx import (via a client-side docx-to-HTML library).
+7. AI features, once you're ready to wire up an API key (`AIService.summarize()`, `.generateMnemonic()`, `.generateFlashcards()`, etc.) — discussed in detail; you've held off on this one for now.
+
+Everything from the original "5 to 8" list is now built. What remains (#5–7 above) either needs infrastructure this environment can't stand up (a real backend) or was explicitly declined (AI) — see "Known limitations" above for the honest reasoning on each.
 
 ## Testing performed
 

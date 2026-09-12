@@ -148,6 +148,10 @@ The **Revision** section (sidebar, with a badge showing how many are due) is whe
 
 **Sticky notes on a PDF**: click **"📌 Sticky note"** in the toolbar (it highlights to show it's armed), then click anywhere on the page — you'll be prompted for the note text, and a small icon appears at that spot. Click the icon any time to read, edit, or delete it.
 
+**Drawing on a PDF**: click **"✏ Draw"** in the toolbar to open the drawing tools — **Pen** (freehand), **Arrow**, or **Rect** (rectangle), plus 5 color dots to pick from. Draw with your mouse or finger directly on the page. **↺ Undo** removes your last stroke; **🗑 Clear page** removes everything you've drawn on the current page (asks to confirm). Every drawing is listed in the "This page" panel too — click one there to delete it. Like highlights, drawings are stored separately from the PDF itself and re-scale correctly no matter what zoom level you're at. Click **Done** (or the Draw button again) to exit drawing mode and go back to normal text selection/highlighting.
+
+**Exporting an annotated copy**: click **"⬇ Export PDF"** in the toolbar to download a copy of the PDF with every highlight, underline, and drawing permanently burned into the pages — a real PDF you can open in any reader, print, or share, with your original text still selectable (it's not a flattened screenshot). Your PDF in the library is never modified — this only produces a separate downloaded copy. If there's nothing marked on the PDF yet, it'll tell you there's nothing to export rather than downloading an unmarked copy.
+
 **Page bookmarks**: click **"🔖 Bookmark page"** to save your current page for quick return. All of a PDF's highlights, sticky notes, and bookmarks for the *current page* are listed in the right-hand panel; click any entry to jump to it or manage it.
 
 **"Split with Notes"**: click this toolbar button to dock a note editor right beside the PDF, so you can take notes while reading without losing your page or zoom level. Pick an existing note (filtered to the PDF's subject) or create a new one on the spot. Toggle it off to get the bookmarks/highlights panel back.
@@ -173,27 +177,43 @@ For more control — filtering by content type or subject, sorting by newest/alp
 
 ---
 
-## 13. Trash
+## 13. Analytics
+
+Sidebar → Analytics. This doesn't need any separate setup — it's entirely built from things you're already doing:
+
+- **Streaks**: current and longest consecutive-day streaks, based on any day you either logged a Study Timer session or rated a note/flashcard during revision. A **30-day heatmap** shows which of the last 30 days had activity (filled square) or didn't.
+- **Weak topics**: topics ranked by how many notes you've marked "difficult" plus how many questions in that topic you got wrong — the more of both, the higher it ranks. Click any topic card to jump straight to it.
+- **Strong topics**: the mirror image — ranked by mastered notes plus correctly-answered questions.
+- **Subject breakdown**: for each subject, what % of its notes are "mastered" and what % of attempted questions you got correct.
+
+Since this relies on your Note status (learning/familiar/moderate/difficult/mastered) and Question status (correct/incorrect), the more consistently you keep those updated as you actually study, the more useful this page gets.
+
+---
+
+## 14. Trash
 
 Sidebar → Trash. Anything deleted (a note, mnemonic, jargon, question, or PDF, including everything swept up by a subject/chapter/topic cascade-delete) lands here first. **Restore** brings it back exactly as it was; **Delete forever** removes it permanently; **Empty Trash** clears everything at once. Nothing is ever silently destroyed without passing through here first (except the course/subject/chapter/topic structural records themselves, which are organizational, not content).
 
 ---
 
-## 14. Settings — theme, revision intervals, backup
+## 15. Settings — theme, revision intervals, backup
 
 Sidebar → Settings:
 
-- **Theme**: light or dark — also toggleable instantly from the 🌓 icon in the top bar.
+- **Theme**: dark (the default) or light — also toggleable instantly from the 🌓 icon in the top bar.
 - **Revision intervals**: the spaced-repetition day-gaps (default `1, 3, 7, 14, 30`) — edit as a comma-separated list.
 - **Backup & Restore**:
   - **⬇ Export backup (.json)** downloads everything — notes, subjects, questions, mnemonics, jargons, revision data, settings, annotations, bookmarks. Do this regularly; it's your safety net.
   - **⬆ Restore from backup** merges a previously exported JSON file back in.
   - Note: PDFs themselves aren't included in the JSON (they're large binary files) — export a PDF individually if you need a copy of it outside the browser.
+- **Readable Exports**: unlike the JSON backup (meant for restoring back into this app), these are plain Markdown files meant for reading, printing, or sharing:
+  - **⬇ All notes (Markdown)** — every note in one file, organized by subject then chapter.
+  - **⬇ All highlights & annotations (Markdown)** — every note highlight and comment, every PDF highlight/underline/sticky note, and a count of drawings per PDF, grouped by type in one file.
 - **Google Drive Sync**: an alternative (or addition) to manual export/import — keeps your data automatically backed up to your own Google Drive. A Client ID is already built in, so just click **Connect Google Drive** and approve the one-time consent screen (that single click is unavoidable — Google requires it). After that, it stays connected automatically on every future visit and syncs near-real-time: any change pushes within seconds, with light throttling during rapid typing so it's not hammering the API on every keystroke. A small status pill in the top bar — visible on every page — always shows the current state ("Synced 2m ago," "Syncing…," "not connected," or a failure warning you can hover for details); click it to jump to Settings. Manual **Sync now** and **Restore from Drive** buttons are also there for immediate control or pulling your data onto a different device. It only ever touches a file it creates itself, inside a "CA Study" folder — never the rest of your Drive. Note: this needs the app to be hosted (http/https), not just opened as a local file — Google's sign-in won't work otherwise.
 
 ---
 
-## 15. Study Timer & Focus Mode
+## 16. Study Timer & Focus Mode
 
 **Study Timer** (sidebar): Pomodoro-style — 25/5, 50/10, or a custom duration. Start/Reset. Completed sessions are logged and feed into the Dashboard's "study time today" figure.
 
@@ -201,7 +221,7 @@ Sidebar → Settings:
 
 ---
 
-## 16. Keyboard shortcuts
+## 17. Keyboard shortcuts
 
 | Shortcut | Action |
 |---|---|
@@ -213,7 +233,7 @@ Sidebar → Settings:
 
 ---
 
-## 17. Installing it as an app (PWA)
+## 18. Installing it as an app (PWA)
 
 Opened as a plain file, it works, but a couple of things (installing to your home screen, full offline caching) need it to be **hosted**, not just opened locally. Upload the four files (`index.html`, `app.js`, `manifest.json`, `sw.js`) together to any static host — GitHub Pages, Netlify, Vercel — and once you visit it over HTTPS, your browser will offer "Install" or "Add to Home Screen".
 

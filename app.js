@@ -33,6 +33,14 @@ function downloadText(filename, text, mime) {
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename; a.click();
 }
 function slugify(s) { return (s || 'note').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'note'; }
+function hexToRgbFloat(hex) {
+  hex = (hex || '#202A22').replace('#', '');
+  if (hex.length === 3) hex = hex.split('').map(c => c + c).join('');
+  const r = parseInt(hex.substring(0, 2), 16) / 255 || 0;
+  const g = parseInt(hex.substring(2, 4), 16) / 255 || 0;
+  const b = parseInt(hex.substring(4, 6), 16) / 255 || 0;
+  return { r, g, b };
+}
 function sanitizeHtml(html) {
   const div = document.createElement('div');
   div.innerHTML = html || '';
@@ -189,7 +197,7 @@ async function restoreTrash(trashId) {
 const EMBEDDED_GOOGLE_CLIENT_ID = '343192402137-kb2aoc77kv4enpsf37eaapde1pnua316.apps.googleusercontent.com';
 const Settings = {
   defaults: {
-    theme: 'light',
+    theme: 'dark',
     fontSize: 'md',
     revisionIntervals: [1, 3, 7, 14, 30],
     googleClientId: EMBEDDED_GOOGLE_CLIENT_ID,
@@ -214,11 +222,11 @@ const Settings = {
 const Theme = {
   apply() {
     const t = Settings.get('theme');
-    document.documentElement.classList.toggle('dark', t === 'dark');
+    document.documentElement.classList.toggle('light', t === 'light');
   },
   toggle() {
     const cur = Settings.get('theme');
-    Settings.set('theme', cur === 'dark' ? 'light' : 'dark').then(() => this.apply());
+    Settings.set('theme', cur === 'light' ? 'dark' : 'light').then(() => this.apply());
   }
 };
 
@@ -493,7 +501,7 @@ const Revision = {
     else if (rating === 'good') stage = stage + 1;
     else if (rating === 'easy') stage = stage + 2;
     const sched = this.schedule(stage);
-    if (type === 'flashcard') { obj.stage = sched.stage; obj.nextDate = sched.nextDate; }
+    if (type === 'flashcard') { obj.stage = sched.stage; obj.nextDate = sched.nextDate; obj.history = obj.history || []; obj.history.push({ date: nowISO(), rating }); }
     else { obj.revision.stage = sched.stage; obj.revision.nextDate = sched.nextDate; obj.revision.history = obj.revision.history || []; obj.revision.history.push({ date: nowISO(), rating }); }
     await saveItem(store, obj);
     updateRevBadge();
@@ -1082,6 +1090,7 @@ const Bookmarks = {
 
 /* ============================== PDF LIBRARY ============================== */
 let pdfDocCache = null, pdfCurrentPage = 1, pdfScale = 1.2, pdfPageObj = null, pdfStickyMode = false, pdfSplitMode = false, pdfSplitNoteId = null;
+let pdfDrawMode = false, pdfDrawTool = 'pen', pdfDrawColor = '#202A22', pdfDrawing = false, pdfDrawStart = null, pdfCurrentStroke = [];
 
 /* Minimal selectable text layer, built the same way pdf.js's own viewer does:
    one absolutely-positioned, transparent span per text item, sized/rotated
@@ -1153,7 +1162,8 @@ const Pdfs = {
     const rec = Cache.pdfs.find(p => p.id === id);
     if (!rec) return `<div class="empty-state"><h3>PDF not found</h3></div>`;
     setTimeout(() => Pdfs.load(rec), 30);
-    pdfSplitMode = false; pdfSplitNoteId = null;
+    pdfSplitMode = false; pdfSplitNoteId = null; pdfDrawMode = false; pdfDrawTool = 'pen'; pdfDrawColor = '#202A22';
+    const drawColors = ['#202A22', '#A23B2E', '#A9822E', '#2f6fc9', '#3f8a53'];
     return `
     <div class="pdf-shell">
       <div class="pdf-toolbar">
@@ -1166,8 +1176,21 @@ const Pdfs = {
         <button class="icon-btn" onclick="Pdfs.zoom(0.15)" title="Zoom in" aria-label="Zoom in">+</button>
         <button class="icon-btn" onclick="Pdfs.bookmarkPage('${id}')" title="Bookmark this page for quick return">🔖 Bookmark page</button>
         <button class="icon-btn" id="stickyBtn" onclick="Pdfs.toggleStickyMode()" title="Click a spot on the page to drop a sticky note there">📌 Sticky note</button>
+        <button class="icon-btn" id="drawBtn" onclick="Pdfs.toggleDrawMode()" title="Draw freehand ink, an arrow, or a rectangle on this page">✏ Draw</button>
         <button class="icon-btn" id="splitBtn" onclick="Pdfs.toggleSplit()" title="Dock a note editor beside the PDF, for taking notes while you read">📝 Split with Notes</button>
+        <button class="icon-btn" onclick="Pdfs.exportAnnotatedPdf()" title="Download a copy of this PDF with all highlights, underlines and drawings permanently burned in — the original stays untouched">⬇ Export PDF</button>
         <span class="subtle" style="font-size:11.5px;">Select text to highlight/underline</span>
+      </div>
+      <div class="pdf-draw-toolbar" id="pdfDrawToolbar" style="display:none;">
+        <button data-tool="pen" class="active-tool" onclick="Pdfs.setDrawTool('pen')" title="Freehand pen">✏ Pen</button>
+        <button data-tool="arrow" onclick="Pdfs.setDrawTool('arrow')" title="Drag to draw an arrow">↗ Arrow</button>
+        <button data-tool="rect" onclick="Pdfs.setDrawTool('rect')" title="Drag to draw a rectangle">▭ Rect</button>
+        <div class="sep"></div>
+        ${drawColors.map((c, i) => `<span class="draw-color-dot ${i === 0 ? 'selected' : ''}" data-color="${c}" style="background:${c};" onclick="Pdfs.setDrawColor('${c}')" title="Use this color"></span>`).join('')}
+        <div class="sep"></div>
+        <button onclick="Pdfs.undoLastDrawing()" title="Remove the last stroke drawn on this page">↺ Undo</button>
+        <button onclick="Pdfs.clearPageDrawings()" title="Remove all drawings on this page">🗑 Clear page</button>
+        <button class="btn sm" onclick="Pdfs.toggleDrawMode()" title="Exit drawing mode">Done</button>
       </div>
       <div class="pdf-body-row">
         <div class="pdf-canvas-wrap" id="pdfCanvasWrap">
@@ -1175,6 +1198,9 @@ const Pdfs = {
             <canvas id="pdfCanvas"></canvas>
             <div class="pdf-textlayer" id="pdfTextLayer" onmouseup="Pdfs.onTextSelect(event)"></div>
             <div class="pdf-hl-overlay" id="pdfHlOverlay"></div>
+            <canvas class="pdf-ink-canvas" id="pdfInkCanvas"
+              onpointerdown="Pdfs.inkPointerDown(event)" onpointermove="Pdfs.inkPointerMove(event)"
+              onpointerup="Pdfs.inkPointerUp(event)" onpointerleave="Pdfs.inkPointerUp(event)"></canvas>
           </div>
         </div>
         <div class="pdf-right-panel" id="pdfRightPanel">
@@ -1205,6 +1231,8 @@ const Pdfs = {
     const textLayer = document.getElementById('pdfTextLayer');
     if (textLayer) await renderTextLayer(page, viewport, textLayer);
     Pdfs.renderOverlay(viewport);
+    const inkCanvas = document.getElementById('pdfInkCanvas');
+    if (inkCanvas) { inkCanvas.width = viewport.width; inkCanvas.height = viewport.height; Pdfs.redrawInkCanvas(); }
     Pdfs.refreshSidePanel();
   },
   prevPage() { if (pdfCurrentPage > 1) { pdfCurrentPage--; Pdfs.renderPage(); } },
@@ -1263,6 +1291,7 @@ const Pdfs = {
   toggleStickyMode() {
     pdfStickyMode = !pdfStickyMode;
     document.getElementById('stickyBtn')?.classList.toggle('active-toggle', pdfStickyMode);
+    if (pdfStickyMode && pdfDrawMode) Pdfs.toggleDrawMode();
     if (pdfStickyMode) toast('Click anywhere on the page to place a sticky note');
   },
   handlePageClick(e) {
@@ -1278,6 +1307,226 @@ const Pdfs = {
     saveItem('annotations', { id: uid(), targetType: 'pdf', pdfId: UI.params.id, page: pdfCurrentPage, kind: 'sticky', x, y, comment: text, text: '', createdAt: nowISO() })
       .then(() => Pdfs.refreshOverlayAndPanel());
   },
+
+  /* ---- freehand drawing: pen, arrow, rectangle ---- */
+  toggleDrawMode() {
+    pdfDrawMode = !pdfDrawMode;
+    document.getElementById('drawBtn')?.classList.toggle('active-toggle', pdfDrawMode);
+    const canvas = document.getElementById('pdfInkCanvas');
+    const toolbar = document.getElementById('pdfDrawToolbar');
+    if (canvas) canvas.classList.toggle('drawing', pdfDrawMode);
+    if (toolbar) toolbar.style.display = pdfDrawMode ? 'flex' : 'none';
+    if (pdfDrawMode && pdfStickyMode) { pdfStickyMode = false; document.getElementById('stickyBtn')?.classList.remove('active-toggle'); }
+  },
+  setDrawTool(tool) {
+    pdfDrawTool = tool;
+    document.querySelectorAll('.pdf-draw-toolbar [data-tool]').forEach(b => b.classList.toggle('active-tool', b.dataset.tool === tool));
+  },
+  setDrawColor(color) {
+    pdfDrawColor = color;
+    document.querySelectorAll('.draw-color-dot').forEach(d => d.classList.toggle('selected', d.dataset.color === color));
+  },
+  inkPointerDown(e) {
+    if (!pdfDrawMode) return;
+    e.preventDefault();
+    const canvas = document.getElementById('pdfInkCanvas');
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left, y = e.clientY - rect.top;
+    pdfDrawing = true;
+    pdfDrawStart = { x, y };
+    pdfCurrentStroke = [{ x, y }];
+    try { canvas.setPointerCapture(e.pointerId); } catch (err) { }
+  },
+  inkPointerMove(e) {
+    if (!pdfDrawing) return;
+    e.preventDefault();
+    const canvas = document.getElementById('pdfInkCanvas');
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left, y = e.clientY - rect.top;
+    if (pdfDrawTool === 'pen') {
+      pdfCurrentStroke.push({ x, y });
+      Pdfs.redrawInkCanvas();
+    } else {
+      pdfCurrentStroke = [pdfDrawStart, { x, y }];
+      Pdfs.redrawInkCanvas();
+      const ctx = canvas.getContext('2d');
+      if (pdfDrawTool === 'rect') {
+        ctx.strokeStyle = pdfDrawColor; ctx.lineWidth = 2.5; ctx.lineJoin = 'round';
+        ctx.strokeRect(Math.min(pdfDrawStart.x, x), Math.min(pdfDrawStart.y, y), Math.abs(x - pdfDrawStart.x), Math.abs(y - pdfDrawStart.y));
+      } else if (pdfDrawTool === 'arrow') {
+        Pdfs.drawArrow(ctx, pdfDrawStart.x, pdfDrawStart.y, x, y, pdfDrawColor);
+      }
+    }
+  },
+  async inkPointerUp(e) {
+    if (!pdfDrawing) return;
+    pdfDrawing = false;
+    if (pdfCurrentStroke.length < 2) { pdfCurrentStroke = []; Pdfs.redrawInkCanvas(); return; }
+    const dist = Math.hypot(pdfCurrentStroke[pdfCurrentStroke.length - 1].x - pdfCurrentStroke[0].x, pdfCurrentStroke[pdfCurrentStroke.length - 1].y - pdfCurrentStroke[0].y);
+    if (pdfDrawTool !== 'pen' && dist < 4) { pdfCurrentStroke = []; Pdfs.redrawInkCanvas(); return; } // ignore accidental taps
+    const pts = pdfCurrentStroke.map(p => ({ x: p.x / pdfScale, y: p.y / pdfScale }));
+    const kind = pdfDrawTool === 'pen' ? 'ink' : pdfDrawTool; // 'ink' | 'arrow' | 'rect'
+    await saveItem('annotations', {
+      id: uid(), targetType: 'pdf', pdfId: UI.params.id, page: pdfCurrentPage,
+      kind, points: pts, color: pdfDrawColor, createdAt: nowISO()
+    });
+    pdfCurrentStroke = [];
+    Pdfs.redrawInkCanvas();
+    Pdfs.refreshSidePanel();
+  },
+  drawArrow(ctx, x1, y1, x2, y2, color) {
+    const headLen = 10;
+    const angle = Math.atan2(y2 - y1, x2 - x1);
+    ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x2, y2);
+    ctx.lineTo(x2 - headLen * Math.cos(angle - Math.PI / 6), y2 - headLen * Math.sin(angle - Math.PI / 6));
+    ctx.lineTo(x2 - headLen * Math.cos(angle + Math.PI / 6), y2 - headLen * Math.sin(angle + Math.PI / 6));
+    ctx.closePath(); ctx.fill();
+  },
+  redrawInkCanvas() {
+    const canvas = document.getElementById('pdfInkCanvas'); if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const items = (Cache.annotations || []).filter(a => a.targetType === 'pdf' && a.pdfId === UI.params.id && a.page === pdfCurrentPage && ['ink', 'arrow', 'rect'].includes(a.kind));
+    items.forEach(a => Pdfs.drawStoredStroke(ctx, a));
+    if (pdfDrawing && pdfDrawTool === 'pen' && pdfCurrentStroke.length > 1) {
+      ctx.strokeStyle = pdfDrawColor; ctx.lineWidth = 2.5; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      ctx.beginPath();
+      pdfCurrentStroke.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+      ctx.stroke();
+    }
+  },
+  drawStoredStroke(ctx, a) {
+    const pts = (a.points || []).map(p => ({ x: p.x * pdfScale, y: p.y * pdfScale }));
+    if (pts.length < 2) return;
+    if (a.kind === 'ink') {
+      ctx.strokeStyle = a.color; ctx.lineWidth = 2.5; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      ctx.beginPath();
+      pts.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+      ctx.stroke();
+    } else if (a.kind === 'rect') {
+      const [p1, p2] = pts;
+      ctx.strokeStyle = a.color; ctx.lineWidth = 2.5; ctx.lineJoin = 'round';
+      ctx.strokeRect(Math.min(p1.x, p2.x), Math.min(p1.y, p2.y), Math.abs(p2.x - p1.x), Math.abs(p2.y - p1.y));
+    } else if (a.kind === 'arrow') {
+      const [p1, p2] = pts;
+      Pdfs.drawArrow(ctx, p1.x, p1.y, p2.x, p2.y, a.color);
+    }
+  },
+  async undoLastDrawing() {
+    const items = (Cache.annotations || []).filter(a => a.targetType === 'pdf' && a.pdfId === UI.params.id && a.page === pdfCurrentPage && ['ink', 'arrow', 'rect'].includes(a.kind));
+    if (!items.length) { toast('Nothing to undo on this page'); return; }
+    const last = items[items.length - 1];
+    await DB.del('annotations', last.id);
+    Cache.annotations = Cache.annotations.filter(x => x.id !== last.id);
+    Pdfs.redrawInkCanvas();
+    Pdfs.refreshSidePanel();
+  },
+  async clearPageDrawings() {
+    const items = (Cache.annotations || []).filter(a => a.targetType === 'pdf' && a.pdfId === UI.params.id && a.page === pdfCurrentPage && ['ink', 'arrow', 'rect'].includes(a.kind));
+    if (!items.length) { toast('No drawings on this page'); return; }
+    if (!confirm(`Remove all ${items.length} drawing(s) on this page?`)) return;
+    for (const a of items) await DB.del('annotations', a.id);
+    const ids = new Set(items.map(a => a.id));
+    Cache.annotations = Cache.annotations.filter(a => !ids.has(a.id));
+    Pdfs.redrawInkCanvas();
+    Pdfs.refreshSidePanel();
+  },
+  async deleteDrawing(id) {
+    if (!confirm('Delete this drawing?')) return;
+    await DB.del('annotations', id);
+    Cache.annotations = Cache.annotations.filter(a => a.id !== id);
+    Pdfs.redrawInkCanvas();
+    Pdfs.refreshSidePanel();
+  },
+
+  /* ---- burned-in annotated PDF export ----
+     Draws every highlight/underline/drawing/sticky as real vector content
+     directly onto a copy of the original PDF's pages via pdf-lib, running
+     entirely in the browser. The original file in your library is never
+     touched, and the source PDF's own text stays selectable/searchable —
+     this isn't a rasterized screenshot of the page. */
+  async exportAnnotatedPdf() {
+    const pdfId = UI.params.id;
+    const rec = Cache.pdfs.find(p => p.id === pdfId);
+    if (!rec) return;
+    if (typeof PDFLib === 'undefined') { toast('The PDF export library failed to load — check your connection and try again'); return; }
+    const allAnnots = (Cache.annotations || []).filter(a => a.targetType === 'pdf' && a.pdfId === pdfId);
+    if (!allAnnots.length) { toast('No highlights, drawings or notes on this PDF yet — nothing to burn in'); return; }
+    toast('Preparing annotated PDF…');
+    try {
+      const { PDFDocument, rgb, StandardFonts } = PDFLib;
+      const srcDoc = await PDFDocument.load(rec.blob.slice(0));
+      const font = await srcDoc.embedFont(StandardFonts.Helvetica);
+      const pages = srcDoc.getPages();
+      for (let i = 0; i < pages.length; i++) {
+        const pageNum = i + 1;
+        const pageAnnots = allAnnots.filter(a => a.page === pageNum);
+        if (!pageAnnots.length) continue;
+        const page = pages[i];
+        const { height: pageHeight } = page.getSize();
+        for (const a of pageAnnots) {
+          const col = hexToRgbFloat(a.color || '#202A22');
+          const pdfColor = rgb(col.r, col.g, col.b);
+          if (a.kind === 'highlight') {
+            (a.rects || []).forEach(r => {
+              page.drawRectangle({ x: r.x, y: pageHeight - r.y - r.h, width: r.w, height: r.h, color: pdfColor, opacity: 0.45 });
+            });
+          } else if (a.kind === 'underline') {
+            (a.rects || []).forEach(r => {
+              const y = pageHeight - r.y - r.h;
+              page.drawLine({ start: { x: r.x, y }, end: { x: r.x + r.w, y }, thickness: 1.6, color: pdfColor });
+            });
+          } else if (a.kind === 'ink') {
+            const pts = a.points || [];
+            for (let j = 0; j < pts.length - 1; j++) {
+              page.drawLine({ start: { x: pts[j].x, y: pageHeight - pts[j].y }, end: { x: pts[j + 1].x, y: pageHeight - pts[j + 1].y }, thickness: 1.8, color: pdfColor });
+            }
+          } else if (a.kind === 'rect') {
+            const pts = a.points || [];
+            if (pts.length >= 2) {
+              const [p1, p2] = pts;
+              const x = Math.min(p1.x, p2.x), w = Math.abs(p2.x - p1.x), h = Math.abs(p2.y - p1.y);
+              const y = pageHeight - Math.max(p1.y, p2.y);
+              page.drawRectangle({ x, y, width: w, height: h, borderColor: pdfColor, borderWidth: 1.6, opacity: 0 });
+            }
+          } else if (a.kind === 'arrow') {
+            const pts = a.points || [];
+            if (pts.length >= 2) {
+              const [p1, p2] = pts;
+              const x1 = p1.x, y1 = pageHeight - p1.y, x2 = p2.x, y2 = pageHeight - p2.y;
+              page.drawLine({ start: { x: x1, y: y1 }, end: { x: x2, y: y2 }, thickness: 1.8, color: pdfColor });
+              const angle = Math.atan2(y2 - y1, x2 - x1);
+              const headLen = 8;
+              [angle + Math.PI * 5 / 6, angle - Math.PI * 5 / 6].forEach(a2 => {
+                page.drawLine({ start: { x: x2, y: y2 }, end: { x: x2 + headLen * Math.cos(a2), y: y2 + headLen * Math.sin(a2) }, thickness: 1.8, color: pdfColor });
+              });
+            }
+          } else if (a.kind === 'sticky') {
+            const x = a.x, y = pageHeight - a.y;
+            page.drawCircle({ x, y, size: 5, color: pdfColor });
+            if (a.comment) {
+              const text = a.comment.length > 60 ? a.comment.slice(0, 57) + '...' : a.comment;
+              try { page.drawText(text, { x: x + 8, y: y - 3, size: 7, font, color: rgb(0.15, 0.15, 0.15) }); } catch (e) { /* skip if font can't encode a character */ }
+            }
+          }
+        }
+      }
+      const bytes = await srcDoc.save();
+      const blob = new Blob([bytes], { type: 'application/pdf' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `${slugify(rec.title)}-annotated.pdf`;
+      a.click();
+      toast('Annotated PDF downloaded');
+    } catch (e) {
+      console.warn('Annotated PDF export failed', e);
+      toast('Export failed — ' + e.message);
+    }
+  },
+
   openHighlight(id) {
     const a = Cache.annotations.find(x => x.id === id); if (!a) return;
     Modal.open(a.kind === 'underline' ? 'Underline' : 'Highlight', `
@@ -1357,7 +1606,13 @@ const Pdfs = {
     const pageAnnots = (Cache.annotations || []).filter(a => a.targetType === 'pdf' && a.pdfId === pdfId && a.page === pdfCurrentPage);
     return `
       <h4 style="font-size:12px;text-transform:uppercase;color:var(--text-dim);margin-top:0;">This page</h4>
-      ${pageAnnots.length ? pageAnnots.map(a => `<div class="subtle" style="cursor:pointer;padding:4px 0;" title="Click to view, edit or delete" onclick="${a.kind === 'sticky' ? `Pdfs.openSticky('${a.id}')` : `Pdfs.openHighlight('${a.id}')`}">${a.kind === 'sticky' ? '📝' : a.kind === 'underline' ? '‾' : '🖍'} ${esc((a.comment || a.text || '').slice(0, 42))}</div>`).join('') : '<div class="subtle">None on this page yet.</div>'}
+      ${pageAnnots.length ? pageAnnots.map(a => {
+      const isDrawing = ['ink', 'arrow', 'rect'].includes(a.kind);
+      const icon = a.kind === 'sticky' ? '📝' : a.kind === 'underline' ? '‾' : a.kind === 'ink' ? '✏' : a.kind === 'arrow' ? '↗' : a.kind === 'rect' ? '▭' : '🖍';
+      const label = isDrawing ? (a.kind.charAt(0).toUpperCase() + a.kind.slice(1) + ' drawing') : (a.comment || a.text || '');
+      const handler = a.kind === 'sticky' ? `Pdfs.openSticky('${a.id}')` : isDrawing ? `Pdfs.deleteDrawing('${a.id}')` : `Pdfs.openHighlight('${a.id}')`;
+      return `<div class="subtle" style="cursor:pointer;padding:4px 0;" title="${isDrawing ? 'Click to delete' : 'Click to view, edit or delete'}" onclick="${handler}">${icon} ${esc(label.slice(0, 42))}</div>`;
+    }).join('') : '<div class="subtle">None on this page yet.</div>'}
       <h4 style="font-size:12px;text-transform:uppercase;color:var(--text-dim);margin-top:14px;">Bookmarked pages</h4>
       ${bookmarks.length ? bookmarks.map(b => `<div class="subtle" style="cursor:pointer;padding:4px 0;" onclick="Pdfs.goToPage(${b.page})" title="Jump to this page">📍 Page ${b.page} ${b.label ? '— ' + esc(b.label) : ''}</div>`).join('') : '<div class="subtle">None yet.</div>'}
     `;
@@ -1431,6 +1686,7 @@ const Commands = [
   { label: 'Focus Mode / Study Timer', icon: '⏱', kind: 'Go to', run: () => { CmdK.close(); UI.nav('focus'); } },
   { label: 'Open Dashboard', icon: '🏠', kind: 'Go to', run: () => { CmdK.close(); UI.nav('dashboard'); } },
   { label: 'Open Search & Filters', icon: '🔍', kind: 'Go to', run: () => { CmdK.close(); UI.nav('search'); } },
+  { label: 'Open Analytics', icon: '📊', kind: 'Go to', run: () => { CmdK.close(); UI.nav('analytics'); } },
   { label: 'Open PDF Library', icon: '📄', kind: 'Go to', run: () => { CmdK.close(); UI.nav('pdfs'); } },
   { label: 'Open Questions', icon: '❓', kind: 'Go to', run: () => { CmdK.close(); UI.nav('questions'); } },
   { label: 'Open Mnemonics', icon: '🧠', kind: 'Go to', run: () => { CmdK.close(); UI.nav('mnemonics'); } },
@@ -1895,6 +2151,12 @@ const SettingsView = {
       <button class="btn sm secondary" onclick="document.getElementById('restoreInput').click()" title="Choose a previously exported backup file">⬆ Restore from backup</button>
     </div>
     <div class="card" style="max-width:520px;margin-bottom:14px;">
+      <h4 style="margin-top:0;">Readable Exports</h4>
+      <p class="subtle">Unlike the JSON backup above (meant for restoring into this app), these are plain-text Markdown files meant for reading, printing, or sharing outside the app — organized and human-readable.</p>
+      <button class="btn sm secondary" onclick="BackupService.exportAllNotesMarkdown()" title="One Markdown file with every note, organized by subject and chapter">⬇ All notes (Markdown)</button>
+      <button class="btn sm secondary" style="margin-top:6px;" onclick="BackupService.exportHighlightsMarkdown()" title="One Markdown file with every highlight, annotation and sticky note across your notes and PDFs">⬇ All highlights &amp; annotations (Markdown)</button>
+    </div>
+    <div class="card" style="max-width:520px;margin-bottom:14px;">
       <h4 style="margin-top:0;">Google Drive Sync</h4>
       <p class="subtle">Keeps your data (the same content as the JSON backup above — not the app's own files) automatically saved to a file in <i>your</i> Google Drive, inside a "CA Study" folder this app creates. Uses a drive.file-scoped connection, so it can only ever see files it made itself — never the rest of your Drive. A Client ID is already configured, so just click Connect below (needs the app to be hosted over https — Google sign-in doesn't work when it's just opened as a local file).</p>
       ${SettingsView.driveSectionHTML()}
@@ -1988,6 +2250,91 @@ const BackupService = {
       } catch (e) { toast('Invalid backup file'); }
     };
     reader.readAsText(file);
+  },
+
+  /* ---- readable bulk exports (plain Markdown, meant for reading/printing/sharing — not for restoring into the app) ---- */
+  exportAllNotesMarkdown() {
+    const notes = Cache.notes || [];
+    if (!notes.length) { toast('No notes to export yet'); return; }
+    let md = `# CA Study — All Notes\n\nExported ${fmtDate(nowISO())}\n`;
+    const bySubject = {};
+    notes.forEach(n => { (bySubject[n.subjectId || '_none'] = bySubject[n.subjectId || '_none'] || []).push(n); });
+    // Sort subjects by name for a predictable, readable order
+    const subjectIds = Object.keys(bySubject).sort((a, b) => (a === '_none' ? 1 : b === '_none' ? -1 : subjectName(a).localeCompare(subjectName(b))));
+    subjectIds.forEach(sId => {
+      md += `\n## ${sId === '_none' ? 'Unfiled' : subjectName(sId)}\n`;
+      const byChapter = {};
+      bySubject[sId].forEach(n => { (byChapter[n.chapterId || '_none'] = byChapter[n.chapterId || '_none'] || []).push(n); });
+      const chapterIds = Object.keys(byChapter).sort((a, b) => (a === '_none' ? 1 : b === '_none' ? -1 : chapterName(a).localeCompare(chapterName(b))));
+      chapterIds.forEach(cId => {
+        if (cId !== '_none') md += `\n### ${chapterName(cId)}\n`;
+        byChapter[cId].forEach(n => {
+          md += `\n#### ${n.title}\n\n${htmlToMarkdown(n.content)}\n`;
+        });
+      });
+    });
+    downloadText(`castudy-all-notes-${new Date().toISOString().slice(0, 10)}.md`, md, 'text/markdown');
+  },
+  exportHighlightsMarkdown() {
+    const colorLabel = (cls) => (Settings.get('highlightColors').find(c => c.key === cls) || {}).label || cls;
+    let md = `# CA Study — Highlights & Annotations\n\nExported ${fmtDate(nowISO())}\n`;
+    let any = false;
+
+    const notesWithMarks = (Cache.notes || []).map(n => {
+      const div = document.createElement('div'); div.innerHTML = n.content;
+      const marks = Array.from(div.querySelectorAll('mark'));
+      return { note: n, marks };
+    }).filter(x => x.marks.length);
+    if (notesWithMarks.length) {
+      any = true;
+      md += `\n## Note highlights\n`;
+      notesWithMarks.forEach(({ note, marks }) => {
+        md += `\n### ${note.title}\n`;
+        marks.forEach(m => { md += `- **[${colorLabel(Array.from(m.classList)[0] || '')}]** ${m.textContent.trim()}\n`; });
+      });
+    }
+
+    const noteAnnots = (Cache.annotations || []).filter(a => a.targetType === 'note');
+    if (noteAnnots.length) {
+      any = true;
+      md += `\n## Note annotations\n`;
+      noteAnnots.forEach(a => {
+        const note = (Cache.notes || []).find(n => n.id === a.targetId);
+        md += `- **${note ? note.title : 'Note'}** — "${a.text}": ${a.comment}\n`;
+      });
+    }
+
+    const pdfMarks = (Cache.annotations || []).filter(a => a.targetType === 'pdf' && (a.kind === 'highlight' || a.kind === 'underline'));
+    if (pdfMarks.length) {
+      any = true;
+      md += `\n## PDF highlights & underlines\n`;
+      pdfMarks.forEach(a => {
+        const pdf = (Cache.pdfs || []).find(p => p.id === a.pdfId);
+        md += `- **${pdf ? pdf.title : 'PDF'}** (p.${a.page}, ${a.kind}) — ${a.text || ''}\n`;
+      });
+    }
+
+    const stickies = (Cache.annotations || []).filter(a => a.targetType === 'pdf' && a.kind === 'sticky');
+    if (stickies.length) {
+      any = true;
+      md += `\n## PDF sticky notes\n`;
+      stickies.forEach(a => {
+        const pdf = (Cache.pdfs || []).find(p => p.id === a.pdfId);
+        md += `- **${pdf ? pdf.title : 'PDF'}** (p.${a.page}) — ${a.comment}\n`;
+      });
+    }
+
+    const drawings = (Cache.annotations || []).filter(a => a.targetType === 'pdf' && ['ink', 'arrow', 'rect'].includes(a.kind));
+    if (drawings.length) {
+      any = true;
+      const byPdf = {};
+      drawings.forEach(a => { const pdf = (Cache.pdfs || []).find(p => p.id === a.pdfId); const key = pdf ? pdf.title : 'PDF'; byPdf[key] = (byPdf[key] || 0) + 1; });
+      md += `\n## PDF drawings\n\n(Freehand drawings don't have text content — counted here; open the PDF to view them, or use "⬇ Export PDF" on that PDF to get them burned into a downloadable copy.)\n\n`;
+      Object.entries(byPdf).forEach(([title, count]) => { md += `- **${title}** — ${count} drawing(s)\n`; });
+    }
+
+    if (!any) { toast('Nothing highlighted or annotated yet'); return; }
+    downloadText(`castudy-highlights-${new Date().toISOString().slice(0, 10)}.md`, md, 'text/markdown');
   }
 };
 
@@ -2197,6 +2544,127 @@ const DriveSync = {
   }
 };
 
+/* ============================== ANALYTICS ============================== */
+const Analytics = {
+  // Every distinct calendar day with any recorded activity — a study-timer
+  // session, or a note/flashcard revision rating. Used for streaks.
+  activeDaySet() {
+    const days = new Set();
+    (Cache.studySessions || []).forEach(s => days.add(new Date(s.date).toDateString()));
+    (Cache.notes || []).forEach(n => (n.revision?.history || []).forEach(h => days.add(new Date(h.date).toDateString())));
+    (Cache.flashcards || []).forEach(f => (f.history || []).forEach(h => days.add(new Date(h.date).toDateString())));
+    return days;
+  },
+  streaks() {
+    const days = this.activeDaySet();
+    let current = 0;
+    let cursor = new Date();
+    if (!days.has(cursor.toDateString())) cursor.setDate(cursor.getDate() - 1); // today not logged yet isn't a broken streak
+    while (days.has(cursor.toDateString())) { current++; cursor.setDate(cursor.getDate() - 1); }
+    const sorted = Array.from(days).map(d => new Date(d)).sort((a, b) => a - b);
+    let longest = 0, run = 0, prev = null;
+    sorted.forEach(d => {
+      run = (prev && (d - prev) === 86400000) ? run + 1 : 1;
+      longest = Math.max(longest, run);
+      prev = d;
+    });
+    return { current, longest, totalActiveDays: days.size };
+  },
+  last30Days() {
+    const days = this.activeDaySet();
+    const arr = [];
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date(); d.setDate(d.getDate() - i);
+      arr.push({ date: d, active: days.has(d.toDateString()) });
+    }
+    return arr;
+  },
+  // Per-topic "weak" (difficult notes + incorrect questions) and "strong"
+  // (mastered notes + correct questions) signal counts — the closest thing
+  // to a mastery score without a dedicated topic-importance field.
+  topicStats() {
+    return (Cache.topics || []).map(t => {
+      const chapter = (Cache.chapters || []).find(c => c.id === t.chapterId);
+      const notes = (Cache.notes || []).filter(n => n.topicId === t.id);
+      const questions = (Cache.questions || []).filter(q => q.topicId === t.id);
+      const notesDifficult = notes.filter(n => n.status === 'difficult').length;
+      const notesMastered = notes.filter(n => n.status === 'mastered').length;
+      const qCorrect = questions.filter(q => q.status === 'correct').length;
+      const qIncorrect = questions.filter(q => q.status === 'incorrect').length;
+      return {
+        topic: t, chapter, subjectId: chapter?.subjectId,
+        notesDifficult, notesMastered, qCorrect, qIncorrect,
+        weakScore: notesDifficult + qIncorrect, strongScore: notesMastered + qCorrect
+      };
+    });
+  },
+  weakTopics(limit = 6) { return this.topicStats().filter(t => t.weakScore > 0).sort((a, b) => b.weakScore - a.weakScore).slice(0, limit); },
+  strongTopics(limit = 6) { return this.topicStats().filter(t => t.strongScore > 0).sort((a, b) => b.strongScore - a.strongScore).slice(0, limit); },
+  subjectBreakdown() {
+    return (Cache.subjects || []).map(s => {
+      const notes = (Cache.notes || []).filter(n => n.subjectId === s.id);
+      const questions = (Cache.questions || []).filter(q => q.subjectId === s.id);
+      const mastered = notes.filter(n => n.status === 'mastered').length;
+      const qCorrect = questions.filter(q => q.status === 'correct').length;
+      const qAttempted = questions.filter(q => q.status !== 'not-attempted').length;
+      return {
+        subject: s, notesTotal: notes.length,
+        notesMasteredPct: notes.length ? Math.round(mastered / notes.length * 100) : 0,
+        questionsTotal: questions.length,
+        questionsAccuracyPct: qAttempted ? Math.round(qCorrect / qAttempted * 100) : null
+      };
+    });
+  }
+};
+const AnalyticsView = {
+  render() {
+    const streaks = Analytics.streaks();
+    const last30 = Analytics.last30Days();
+    const weak = Analytics.weakTopics();
+    const strong = Analytics.strongTopics();
+    const subjects = Analytics.subjectBreakdown();
+    const totalHours = Math.round(((Cache.studySessions || []).reduce((a, b) => a + b.duration, 0) / 60) * 10) / 10;
+    return `<h2>Analytics</h2>
+    <p class="subtle">Built from your notes' status, question results, and revision history — not a separate thing you have to maintain.</p>
+    <div class="grid cols-3" style="margin:18px 0;">
+      <div class="card"><div class="subtle">Current streak</div><h2 style="margin:6px 0;font-family:var(--mono);">${streaks.current} day${streaks.current === 1 ? '' : 's'}</h2></div>
+      <div class="card"><div class="subtle">Longest streak</div><h2 style="margin:6px 0;font-family:var(--mono);">${streaks.longest} day${streaks.longest === 1 ? '' : 's'}</h2></div>
+      <div class="card"><div class="subtle">Total study time logged</div><h2 style="margin:6px 0;font-family:var(--mono);">${totalHours}h</h2></div>
+    </div>
+    <h3>Last 30 days</h3>
+    <div style="display:flex;gap:3px;flex-wrap:wrap;margin-bottom:22px;" title="Each square is one day — filled means something was studied or revised that day">
+      ${last30.map(d => `<div title="${d.date.toDateString()}${d.active ? ' — active' : ' — no activity'}" style="width:16px;height:16px;border-radius:3px;background:${d.active ? 'var(--accent)' : 'var(--accent-soft)'};"></div>`).join('')}
+    </div>
+    <div class="grid cols-2" style="margin-bottom:22px;">
+      <div>
+        <h3>Weak topics <span class="subtle" style="font-weight:normal;font-size:12px;">need more work</span></h3>
+        ${weak.length ? weak.map(t => `<div class="card" style="margin-bottom:8px;cursor:pointer;" onclick="UI.nav('topic',{id:'${t.topic.id}'})" title="Open this topic">
+          <div style="display:flex;justify-content:space-between;gap:8px;"><b>${esc(t.topic.name)}</b><span class="pill warn">${t.weakScore} signal${t.weakScore === 1 ? '' : 's'}</span></div>
+          <div class="subtle">${subjectName(t.subjectId)} › ${esc(t.chapter?.name || '')}</div>
+          <div class="subtle" style="margin-top:4px;">${[t.notesDifficult ? `${t.notesDifficult} difficult note${t.notesDifficult === 1 ? '' : 's'}` : '', t.qIncorrect ? `${t.qIncorrect} incorrect question${t.qIncorrect === 1 ? '' : 's'}` : ''].filter(Boolean).join(' · ')}</div>
+        </div>`).join('') : `<div class="subtle">Nothing flagged as difficult or incorrect yet.</div>`}
+      </div>
+      <div>
+        <h3>Strong topics <span class="subtle" style="font-weight:normal;font-size:12px;">solid ground</span></h3>
+        ${strong.length ? strong.map(t => `<div class="card" style="margin-bottom:8px;cursor:pointer;" onclick="UI.nav('topic',{id:'${t.topic.id}'})" title="Open this topic">
+          <div style="display:flex;justify-content:space-between;gap:8px;"><b>${esc(t.topic.name)}</b><span class="pill">${t.strongScore} signal${t.strongScore === 1 ? '' : 's'}</span></div>
+          <div class="subtle">${subjectName(t.subjectId)} › ${esc(t.chapter?.name || '')}</div>
+          <div class="subtle" style="margin-top:4px;">${[t.notesMastered ? `${t.notesMastered} mastered note${t.notesMastered === 1 ? '' : 's'}` : '', t.qCorrect ? `${t.qCorrect} correct question${t.qCorrect === 1 ? '' : 's'}` : ''].filter(Boolean).join(' · ')}</div>
+        </div>`).join('') : `<div class="subtle">Nothing mastered yet — mark notes "mastered" as you get confident, or answer some questions.</div>`}
+      </div>
+    </div>
+    <h3>Subject breakdown</h3>
+    ${subjects.length ? subjects.map(s => `<div class="card" style="margin-bottom:8px;">
+      <b>${esc(s.subject.name)}</b>
+      <div class="note-meta-row" style="margin-top:6px;">
+        <span class="pill">${s.notesTotal} note${s.notesTotal === 1 ? '' : 's'} · ${s.notesMasteredPct}% mastered</span>
+        <span class="pill">${s.questionsTotal} question${s.questionsTotal === 1 ? '' : 's'}${s.questionsAccuracyPct !== null ? ` · ${s.questionsAccuracyPct}% correct` : ''}</span>
+      </div>
+    </div>`).join('') : `<div class="subtle">Add subjects to see a breakdown.</div>`}
+    `;
+  }
+};
+
 /* ============================== DASHBOARD ============================== */
 function subjectProgress() {
   return (Cache.subjects || []).map(s => {
@@ -2225,16 +2693,34 @@ const Dashboard = {
       return emptyState('📘', 'Create your first course to start building your CA study workspace.', 'Create Course', 'Courses.promptNew()');
     }
     const dateStr = new Date().toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    const masteredCount = notes.filter(n => n.status === 'mastered').length;
+    const masteryPct = notes.length ? Math.round((masteredCount / notes.length) * 100) : 0;
+    const r = 52, circumference = 2 * Math.PI * r;
+    const dashOffset = circumference * (1 - masteryPct / 100);
+    const streak = (typeof Analytics !== 'undefined' ? Analytics.streaks() : { current: 0 }).current;
     return `
-    <div class="ledger-hero">
-      <p class="ledger-date">${dateStr}</p>
-      <h2 class="ledger-greeting">${greeting}. Here's today's entry.</h2>
-      <div class="ledger-rows">
-        <div class="ledger-row" title="Total minutes logged via the Study Timer today"><span class="lr-label">Study time logged today</span><span class="lr-leader"></span><span class="lr-value">${todayMins} min</span></div>
-        <div class="ledger-row" title="Total notes across all your courses"><span class="lr-label">Notes in the ledger</span><span class="lr-leader"></span><span class="lr-value">${notes.length}</span></div>
-        <div class="ledger-row" title="Notes and flashcards scheduled for review today"><span class="lr-label">Revision due today</span><span class="lr-leader"></span><span class="lr-value ${due.length ? 'flag' : ''}">${due.length}</span></div>
+    <div class="focus-hero">
+      <div>
+        <p class="focus-date">${dateStr}</p>
+        <h2 class="focus-greeting">${greeting}. Ready to sharpen your edge?</h2>
+        <div class="focus-stats-row">
+          <div title="Total minutes logged via the Study Timer today"><span class="focus-stat-value">${todayMins}</span><span class="focus-stat-label">min today</span></div>
+          <div title="Consecutive days with study activity — see Analytics for details"><span class="focus-stat-value">${streak}🔥</span><span class="focus-stat-label">day streak</span></div>
+          <div title="Notes and flashcards scheduled for review today"><span class="focus-stat-value ${due.length ? 'flag' : ''}">${due.length}</span><span class="focus-stat-label">due today</span></div>
+        </div>
+        ${due.length ? `<button class="btn sm" onclick="UI.nav('revision')" title="Go to the revision queue">Start Revision</button>` : `<button class="btn sm secondary" onclick="UI.nav('analytics')" title="See streaks, weak/strong topics and more">View Analytics</button>`}
       </div>
-      ${due.length ? `<div style="margin-top:16px;"><button class="btn sm" onclick="UI.nav('revision')" title="Go to the revision queue">Start Revision</button></div>` : ''}
+      <div class="focus-hero-ring" title="Share of your notes marked as mastered">
+        <svg viewBox="0 0 120 120" width="108" height="108">
+          <circle cx="60" cy="60" r="${r}" fill="none" stroke="var(--border)" stroke-width="10"/>
+          <circle cx="60" cy="60" r="${r}" fill="none" stroke="url(#focusRingGrad)" stroke-width="10" stroke-linecap="round"
+            stroke-dasharray="${circumference}" stroke-dashoffset="${dashOffset}" transform="rotate(-90 60 60)"/>
+          <defs><linearGradient id="focusRingGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="var(--accent-2)"/><stop offset="100%" stop-color="var(--accent)"/>
+          </linearGradient></defs>
+        </svg>
+        <div class="focus-ring-label"><b>${masteryPct}%</b><span>mastered</span></div>
+      </div>
     </div>
     <h3>Continue studying</h3>
     ${recentNotes.length ? recentNotes.map(n => `<div class="list-row" onclick="UI.nav('note',{id:'${n.id}'})" title="Open this note">
@@ -2298,6 +2784,7 @@ const Router = {
     let html = '';
     switch (UI.route) {
       case 'dashboard': html = Dashboard.render(); break;
+      case 'analytics': html = AnalyticsView.render(); break;
       case 'search': html = SearchView.render(UI.params.q || ''); break;
       case 'topic': html = TopicView(UI.params.id); break;
       case 'note': html = Notes.render(UI.params.id); break;
