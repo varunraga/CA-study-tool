@@ -6,7 +6,9 @@
 <title>CA Study — Working Ledger</title>
 <meta name="theme-color" content="#EFF2E8">
 <link rel="manifest" href="manifest.json">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='48' fill='%23202A22'/%3E%3Ccircle cx='50' cy='50' r='40' fill='none' stroke='%23A9822E' stroke-width='2'/%3E%3Ctext x='50' y='63' font-size='38' text-anchor='middle' fill='%23EFE4C8' font-family='Georgia,serif'%3ECA%3C/text%3E%3C/svg%3E">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16.png">
+<link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -38,7 +40,7 @@ button{font-family:inherit;cursor:pointer;}
 .sidebar{width:252px;flex-shrink:0;background:var(--bg-elev);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow-y:auto;position:relative;}
 .sidebar::before{content:'';position:absolute;top:0;right:0;bottom:0;width:3px;background:linear-gradient(180deg,var(--accent),var(--accent) 40%,transparent 40%,transparent 60%,var(--accent) 60%);opacity:.55;}
 .sidebar-header{padding:20px 16px 14px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border);margin-bottom:4px;}
-.sidebar-seal{width:34px;height:34px;border-radius:50%;background:var(--text);color:var(--accent);display:flex;align-items:center;justify-content:center;font-family:var(--serif);font-weight:700;font-size:14px;flex-shrink:0;box-shadow:0 0 0 2px var(--accent) inset;}
+.sidebar-seal{width:36px;height:36px;border-radius:9px;flex-shrink:0;object-fit:contain;box-shadow:0 1px 4px rgba(0,0,0,.3);}
 .sidebar-wordmark{font-family:var(--serif);font-size:17px;font-weight:600;line-height:1.2;}
 .sidebar-wordmark small{display:block;font-family:var(--sans);font-size:11px;font-weight:400;color:var(--text-dim);letter-spacing:.02em;}
 .sidebar-section{padding:10px 10px 4px;}
@@ -233,7 +235,7 @@ body.focus-mode .content { max-width: 720px; margin: 0 auto; padding-top: 50px; 
 
   <aside class="sidebar" id="sidebar">
     <div class="sidebar-header">
-      <div class="sidebar-seal">CA</div>
+      <img src="icons/sidebar-logo.png" alt="CA Study logo" class="sidebar-seal">
       <div class="sidebar-wordmark">Study<small>Working Ledger</small></div>
     </div>
     <div class="sidebar-section">

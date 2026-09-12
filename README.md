@@ -16,6 +16,13 @@ ca-study-app/
   app.js         — all application logic (routing, IndexedDB, every feature module)
   manifest.json  — PWA manifest
   sw.js          — service worker (offline caching of the app shell)
+  icons/
+    favicon-16.png, favicon-32.png    — browser tab icon
+    apple-touch-icon.png              — iOS home-screen icon (180×180)
+    icon-192.png, icon-512.png        — standard PWA install icons
+    icon-192-maskable.png, icon-512-maskable.png — Android adaptive-icon safe versions
+    sidebar-logo.png                  — the logo shown in the app's own sidebar
+    logo-source.png                   — the original full-resolution artwork, kept for regenerating any size later
 ```
 
 ## Run it right now
@@ -30,11 +37,11 @@ python3 -m http.server 8080
 
 ## Deploy it as an installable PWA
 
-Upload the four files to any static host, keeping them in the same folder together:
+Upload the whole folder — the four root files **and** the `icons/` subfolder — to any static host, keeping the same relative structure:
 - **GitHub Pages**: push to a repo, enable Pages on the branch — same approach as your Kriti Notation Studio deployment.
 - **Netlify / Vercel**: drag-and-drop the folder.
 
-Once hosted over HTTPS, visiting the URL will offer "Add to Home Screen" / "Install" on Android, iOS, and desktop Chrome/Edge.
+Once hosted over HTTPS, visiting the URL will offer "Add to Home Screen" / "Install" on Android, iOS, and desktop Chrome/Edge — using your logo, at the right size for each platform.
 
 ### Updating after you've deployed once
 
