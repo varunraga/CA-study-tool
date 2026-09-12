@@ -266,6 +266,7 @@ body.focus-mode .content { max-width: 720px; margin: 0 auto; padding-top: 50px; 
       <button class="icon-btn" style="display:none" id="menuBtn" onclick="UI.toggleSidebar()" aria-label="Open menu" title="Open the subjects & navigation menu">☰</button>
       <input class="search-top" placeholder="Search or run a command…  (Ctrl/Cmd+K)" onclick="CmdK.open()" readonly aria-label="Search or run a command" title="Search notes, PDFs, questions and more — or type a command like &quot;New Note&quot;">
       <div class="spacer"></div>
+      <span id="driveStatusBadge" class="pill" style="display:none;cursor:pointer;" onclick="UI.nav('settings')" title="Google Drive sync status — click to manage in Settings"></span>
       <button class="icon-btn" onclick="UI.newQuick()" title="Quick add — create a note, PDF, mnemonic, jargon or question" aria-label="Quick add">＋</button>
       <button class="icon-btn" onclick="Theme.toggle()" title="Switch between light and dark mode" aria-label="Toggle dark mode">🌓</button>
     </div>

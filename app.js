@@ -8,6 +8,15 @@ const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 
 const nowISO = () => new Date().toISOString();
 const fmtDate = (iso) => iso ? new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
 const fmtDateShort = (iso) => iso ? new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '—';
+function relTime(iso) {
+  if (!iso) return '';
+  const mins = Math.floor(Math.max(0, Date.now() - new Date(iso).getTime()) / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return mins + 'm ago';
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return hrs + 'h ago';
+  return Math.floor(hrs / 24) + 'd ago';
+}
 const esc = (s) => (s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
 const daysFromNow = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString(); };
@@ -101,7 +110,8 @@ function toast(msg) {
   const el = document.createElement('div');
   el.className = 'toast'; el.textContent = msg;
   wrap.appendChild(el);
-  setTimeout(() => el.remove(), 2600);
+  const duration = Math.min(9000, Math.max(2600, msg.length * 60)); // longer messages stay up longer, capped at 9s
+  setTimeout(() => el.remove(), duration);
 }
 
 /* ============================== DB ============================== */
@@ -1988,11 +1998,31 @@ const BackupService = {
    for instructions) — Google requires the app be served over http(s), not
    opened as a local file, for sign-in to work at all. */
 const DriveSync = {
-  tokenClient: null, accessToken: null, tokenExpiresAt: 0, connected: false, syncing: false, dirty: false,
+  tokenClient: null, accessToken: null, tokenExpiresAt: 0, connected: false, syncing: false, dirty: false, lastSyncError: null,
   DRIVE_FOLDER_NAME: 'CA Study', DRIVE_FILE_NAME: 'castudy-backup.json',
+
+  updateStatusBadge() {
+    const el = document.getElementById('driveStatusBadge');
+    if (!el) return;
+    if (!Settings.get('googleClientId')) { el.style.display = 'none'; return; }
+    el.style.display = 'inline-block';
+    if (this.syncing) {
+      el.textContent = '☁ Syncing…'; el.className = 'pill'; el.title = 'Sync with Google Drive in progress';
+    } else if (!this.connected) {
+      el.textContent = '☁ Drive: not connected'; el.className = 'pill'; el.title = 'Click to connect Google Drive sync in Settings';
+    } else if (this.lastSyncError) {
+      el.textContent = '⚠ Drive sync failed'; el.className = 'pill warn'; el.title = this.lastSyncError + ' — click to open Settings';
+    } else {
+      const last = Settings.get('googleLastSynced');
+      el.textContent = '☁ Synced ' + (last ? relTime(last) : '(pending)');
+      el.className = 'pill';
+      el.title = last ? `Last synced ${fmtDate(last)} · ${new Date(last).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} — click to open Settings` : 'Connected to Google Drive — click to open Settings';
+    }
+  },
 
   init() {
     const clientId = Settings.get('googleClientId');
+    this.updateStatusBadge();
     if (!clientId || typeof google === 'undefined' || !google.accounts) return;
     try {
       this.tokenClient = google.accounts.oauth2.initTokenClient({
@@ -2007,10 +2037,12 @@ const DriveSync = {
       this.tokenClient.requestAccessToken({ prompt: '' });
     }
     // Safety-net flush every 60s in case a burst of changes never triggers
-    // the trailing sync below (e.g. tab loses focus mid-throttle-window).
+    // the trailing sync below (e.g. tab loses focus mid-throttle-window) —
+    // also doubles as the badge's "Xm ago" text refresh tick.
     if (!this._flushInterval) {
       this._flushInterval = setInterval(() => {
         if (this.connected && this.dirty && navigator.onLine && !this.syncing) this.syncNow(true);
+        this.updateStatusBadge();
       }, 60 * 1000);
     }
   },
@@ -2032,11 +2064,17 @@ const DriveSync = {
     }
   },
   onToken(resp) {
-    if (resp.error) { if (resp.error !== 'immediate_failed' && resp.error !== 'popup_closed') toast('Google sign-in failed: ' + resp.error); return; }
+    if (resp.error) {
+      if (resp.error !== 'immediate_failed' && resp.error !== 'popup_closed') toast('Google sign-in failed: ' + resp.error);
+      this.updateStatusBadge();
+      return;
+    }
     this.accessToken = resp.access_token;
     this.tokenExpiresAt = Date.now() + (resp.expires_in || 3500) * 1000;
     this.connected = true;
+    this.lastSyncError = null;
     Settings.set('googleWasConnected', true);
+    this.updateStatusBadge();
     this.ensureFileId().then(() => this.syncNow(true)).then(() => Router.render());
   },
   async ensureValidToken() {
@@ -2060,17 +2098,31 @@ const DriveSync = {
     if (this.accessToken && typeof google !== 'undefined' && google.accounts) {
       google.accounts.oauth2.revoke(this.accessToken, () => {});
     }
-    this.accessToken = null; this.tokenExpiresAt = 0; this.connected = false;
+    this.accessToken = null; this.tokenExpiresAt = 0; this.connected = false; this.lastSyncError = null;
     Settings.set('googleWasConnected', false);
     Settings.set('googleFolderId', '').then(() => Settings.set('googleFileId', ''));
     toast('Disconnected from Google Drive');
+    this.updateStatusBadge();
     Router.render();
   },
   async driveFetch(url, options = {}) {
     const ok = await this.ensureValidToken();
     if (!ok) throw new Error('Not signed in');
     const res = await fetch(url, { ...options, headers: { ...(options.headers || {}), Authorization: 'Bearer ' + this.accessToken } });
-    if (!res.ok) { const t = await res.text().catch(() => ''); throw new Error(`Drive API ${res.status}: ${t.slice(0, 200)}`); }
+    if (!res.ok) {
+      const raw = await res.text().catch(() => '');
+      let reason = '', message = '';
+      try { const j = JSON.parse(raw); message = j.error?.message || ''; reason = j.error?.errors?.[0]?.reason || j.error?.status || ''; } catch (e) { /* not JSON */ }
+      console.warn('Drive API error', res.status, reason, message, raw.slice(0, 500));
+      if (res.status === 403 && (/has not been used|disabled|accessNotConfigured|SERVICE_DISABLED/i.test(raw))) {
+        throw new Error('The Google Drive API isn\'t enabled for this Google Cloud project yet. Go to console.cloud.google.com → APIs & Services → Library → search "Google Drive API" → Enable, then try again.');
+      }
+      if (res.status === 403) {
+        throw new Error(`Google Drive refused this (403${reason ? ': ' + reason : ''}). ${message || 'Check that the Drive API is enabled and the OAuth consent screen includes your account as a test user.'}`);
+      }
+      if (res.status === 401) { this.accessToken = null; throw new Error('Google sign-in expired — click Sync now again to reconnect.'); }
+      throw new Error(`Drive API ${res.status}${message ? ': ' + message : ''}`);
+    }
     return res;
   },
   async ensureFileId() {
@@ -2109,7 +2161,7 @@ const DriveSync = {
   async syncNow(silent) {
     if (this.syncing) return;
     if (!this.connected) { if (!silent) toast('Connect Google Drive first'); return; }
-    this.syncing = true;
+    this.syncing = true; this.updateStatusBadge();
     try {
       const fileId = await this.ensureFileId();
       const data = BackupService.buildBackupObject();
@@ -2117,13 +2169,15 @@ const DriveSync = {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data)
       });
       this.dirty = false;
+      this.lastSyncError = null;
       await Settings.set('googleLastSynced', nowISO());
       if (!silent) toast('Synced to Google Drive');
       if (UI.route === 'settings') Router.render();
     } catch (e) {
       console.warn('Drive sync failed', e);
+      this.lastSyncError = e.message;
       if (!silent) toast('Sync failed — ' + e.message);
-    } finally { this.syncing = false; }
+    } finally { this.syncing = false; this.updateStatusBadge(); }
   },
   async restoreFromDrive() {
     if (!this.connected) { toast('Connect Google Drive first'); return; }
