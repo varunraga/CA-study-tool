@@ -147,6 +147,7 @@ async function saveItem(store, obj) {
   const arr = Cache[store];
   const i = arr.findIndex(x => x.id === obj.id);
   if (i >= 0) arr[i] = obj; else arr.push(obj);
+  if (typeof DriveSync !== 'undefined') DriveSync.markDirty();
   return obj;
 }
 async function trashItem(store, id) {
@@ -168,11 +169,18 @@ async function restoreTrash(trashId) {
 }
 
 /* ============================== SETTINGS ============================== */
+// Embedded default: this is a public OAuth Client ID (not a secret — the
+// real security boundary is the "Authorized JavaScript origins" allowlist
+// configured for it in Google Cloud Console, which only your actual hosted
+// URL can pass). Anyone can still override it in Settings if they redeploy
+// this app under their own Google Cloud project.
+const EMBEDDED_GOOGLE_CLIENT_ID = '343192402137-kb2aoc77kv4enpsf37eaapde1pnua316.apps.googleusercontent.com';
 const Settings = {
   defaults: {
     theme: 'light',
     fontSize: 'md',
     revisionIntervals: [1, 3, 7, 14, 30],
+    googleClientId: EMBEDDED_GOOGLE_CLIENT_ID,
     highlightColors: [
       { key: 'y', label: 'Important', color: '#FFD84D' },
       { key: 'g', label: 'Definition', color: '#7FE0A0' },
@@ -1874,10 +1882,55 @@ const SettingsView = {
       <input type="file" id="restoreInput" accept="application/json" style="display:none" onchange="BackupService.importJSON(this)">
       <button class="btn sm secondary" onclick="document.getElementById('restoreInput').click()" title="Choose a previously exported backup file">⬆ Restore from backup</button>
     </div>
+    <div class="card" style="max-width:520px;margin-bottom:14px;">
+      <h4 style="margin-top:0;">Google Drive Sync</h4>
+      <p class="subtle">Keeps your data (the same content as the JSON backup above — not the app's own files) automatically saved to a file in <i>your</i> Google Drive, inside a "CA Study" folder this app creates. Uses a drive.file-scoped connection, so it can only ever see files it made itself — never the rest of your Drive. A Client ID is already configured, so just click Connect below (needs the app to be hosted over https — Google sign-in doesn't work when it's just opened as a local file).</p>
+      ${SettingsView.driveSectionHTML()}
+    </div>
     <div class="card" style="max-width:520px;">
       <h4 style="margin-top:0;">About</h4>
-      <p class="subtle">CA Study — a local-first revision workspace. All data is stored in this browser's IndexedDB; nothing leaves your device unless you export it.</p>
+      <p class="subtle">CA Study — a local-first revision workspace. All data is stored in this browser's IndexedDB; nothing leaves your device unless you export it or turn on Google Drive Sync above.</p>
     </div>`;
+  },
+  driveSectionHTML() {
+    const clientId = Settings.get('googleClientId') || '';
+    const lastSynced = Settings.get('googleLastSynced');
+    let html = `<label>Google OAuth Client ID</label>
+      <input type="text" id="gClientId" value="${esc(clientId)}" placeholder="xxxxxxxxxx.apps.googleusercontent.com" title="From Google Cloud Console — see instructions below">
+      <button class="btn sm" style="margin-top:8px;" onclick="SettingsView.saveClientId()" title="Save this Client ID">Save Client ID</button>`;
+    if (clientId) {
+      if (DriveSync.connected) {
+        html += `<div class="pill" style="margin-top:12px;">✅ Connected</div>
+          <div class="subtle" style="margin-top:4px;">Last synced: ${lastSynced ? fmtDate(lastSynced) + ' · ' + new Date(lastSynced).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'not yet'}</div>
+          <div class="note-meta-row" style="margin-top:10px;">
+            <button class="btn sm secondary" onclick="DriveSync.syncNow()" title="Push your latest data to Drive right now">Sync now</button>
+            <button class="btn sm secondary" onclick="DriveSync.restoreFromDrive()" title="Pull data from Drive and merge it into this device">Restore from Drive</button>
+            <button class="btn sm danger" onclick="DriveSync.disconnect()" title="Disconnect this device from Drive sync">Disconnect</button>
+          </div>`;
+      } else {
+        html += `<div style="margin-top:12px;"><button class="btn sm" onclick="DriveSync.connect()" title="Sign in with Google and authorize this app to sync your data">Connect Google Drive</button></div>`;
+      }
+    }
+    html += `<details style="margin-top:14px;">
+      <summary style="cursor:pointer;font-size:13px;color:var(--text-dim);">Using a different Client ID (e.g. you host this at your own URL)</summary>
+      <p class="subtle" style="margin-top:8px;">The default Client ID above is locked to a specific set of authorized URLs in Google Cloud Console. If you deploy this app somewhere else and Connect fails, set up your own:</p>
+      <ol class="subtle" style="padding-left:18px;margin-top:8px;">
+        <li>Go to <a href="https://console.cloud.google.com/" target="_blank" rel="noopener">console.cloud.google.com</a> and create (or pick) a project.</li>
+        <li>APIs &amp; Services → Library → search "Google Drive API" → Enable.</li>
+        <li>APIs &amp; Services → OAuth consent screen → External → fill in the basics, add your own email as a test user (no need to publish or verify it for personal use).</li>
+        <li>APIs &amp; Services → Credentials → Create Credentials → OAuth client ID → Application type: Web application.</li>
+        <li>Under "Authorized JavaScript origins," add the exact URL you open this app from (e.g. https://yourname.github.io) — no path, no trailing slash. Add http://localhost:PORT too if you test locally.</li>
+        <li>Copy the Client ID (ends in <code>.apps.googleusercontent.com</code> — no Client Secret needed) and paste it above.</li>
+      </ol>
+    </details>`;
+    return html;
+  },
+  async saveClientId() {
+    const id = document.getElementById('gClientId').value.trim();
+    await Settings.set('googleClientId', id);
+    toast(id ? 'Client ID saved' : 'Client ID cleared');
+    DriveSync.init();
+    Router.render();
   },
   async saveIntervals() {
     const arr = document.getElementById('intervalsInput').value.split(',').map(x => parseInt(x.trim())).filter(n => !isNaN(n));
@@ -1887,10 +1940,27 @@ const SettingsView = {
 };
 
 const BackupService = {
-  async exportJSON() {
+  /* Shared by local export/import and Google Drive sync below, so both use
+     exactly the same rules for what's included. PDFs (binary, large) and
+     noteVersions (derived history, reconstructable) are left out — export
+     a PDF individually if you need one outside the browser. */
+  buildBackupObject() {
     const data = {};
-    for (const s of STORES) { if (s === 'pdfs') continue; data[s] = Cache[s]; }
+    for (const s of STORES) { if (s === 'pdfs' || s === 'noteVersions') continue; data[s] = Cache[s]; }
     data.pdfsMeta = (Cache.pdfs || []).map(p => ({ id: p.id, filename: p.filename, title: p.title, pageCount: p.pageCount }));
+    data._exportedAt = nowISO();
+    return data;
+  },
+  async mergeBackupObject(data) {
+    for (const s of STORES) {
+      if (s === 'pdfs' || s === 'noteVersions' || !data[s]) continue;
+      for (const obj of data[s]) await DB.put(s, obj);
+    }
+    await loadAllToCache();
+    Tree.render(); Router.render();
+  },
+  async exportJSON() {
+    const data = this.buildBackupObject();
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `castudy-backup-${new Date().toISOString().slice(0, 10)}.json`; a.click();
   },
@@ -1901,15 +1971,173 @@ const BackupService = {
     reader.onload = async () => {
       try {
         const data = JSON.parse(reader.result);
-        for (const s of STORES) {
-          if (s === 'pdfs' || !data[s]) continue;
-          for (const obj of data[s]) await DB.put(s, obj);
-        }
-        await loadAllToCache();
-        toast('Backup restored'); Tree.render(); Router.render();
+        await this.mergeBackupObject(data);
+        toast('Backup restored');
       } catch (e) { toast('Invalid backup file'); }
     };
     reader.readAsText(file);
+  }
+};
+
+/* ============================== GOOGLE DRIVE SYNC ==============================
+   Saves your data (not the app files — the actual notes/questions/etc, the same
+   content as a JSON backup) to a file in your own Google Drive, using a
+   drive.file-scoped OAuth token. drive.file means this app can only ever see or
+   touch files it created itself — never the rest of your Drive.
+   Requires a Google Cloud OAuth Client ID that you create yourself (see Settings
+   for instructions) — Google requires the app be served over http(s), not
+   opened as a local file, for sign-in to work at all. */
+const DriveSync = {
+  tokenClient: null, accessToken: null, tokenExpiresAt: 0, connected: false, syncing: false, dirty: false,
+  DRIVE_FOLDER_NAME: 'CA Study', DRIVE_FILE_NAME: 'castudy-backup.json',
+
+  init() {
+    const clientId = Settings.get('googleClientId');
+    if (!clientId || typeof google === 'undefined' || !google.accounts) return;
+    try {
+      this.tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: clientId,
+        scope: 'https://www.googleapis.com/auth/drive.file',
+        callback: (resp) => this.onToken(resp),
+      });
+    } catch (e) { console.warn('Drive init failed', e); }
+    // If previously connected, try a silent (no popup) reconnect so sync
+    // resumes automatically without asking you to click Connect every visit.
+    if (this.tokenClient && Settings.get('googleWasConnected')) {
+      this.tokenClient.requestAccessToken({ prompt: '' });
+    }
+    // Safety-net flush every 60s in case a burst of changes never triggers
+    // the trailing sync below (e.g. tab loses focus mid-throttle-window).
+    if (!this._flushInterval) {
+      this._flushInterval = setInterval(() => {
+        if (this.connected && this.dirty && navigator.onLine && !this.syncing) this.syncNow(true);
+      }, 60 * 1000);
+    }
+  },
+  // Near-real-time sync: the first change in a burst syncs almost immediately;
+  // rapid subsequent changes within the throttle window don't spam the Drive
+  // API, but a trailing sync a few seconds after the last change guarantees
+  // the final state still gets pushed even if you keep typing continuously.
+  _lastSyncAttempt: 0, _trailingTimer: null,
+  markDirty() {
+    this.dirty = true;
+    if (!this.connected || !navigator.onLine) return;
+    const now = Date.now();
+    clearTimeout(this._trailingTimer);
+    if (now - this._lastSyncAttempt > 10000) {
+      this._lastSyncAttempt = now;
+      this.syncNow(true);
+    } else {
+      this._trailingTimer = setTimeout(() => { if (this.dirty) this.syncNow(true); }, 4000);
+    }
+  },
+  onToken(resp) {
+    if (resp.error) { if (resp.error !== 'immediate_failed' && resp.error !== 'popup_closed') toast('Google sign-in failed: ' + resp.error); return; }
+    this.accessToken = resp.access_token;
+    this.tokenExpiresAt = Date.now() + (resp.expires_in || 3500) * 1000;
+    this.connected = true;
+    Settings.set('googleWasConnected', true);
+    this.ensureFileId().then(() => this.syncNow(true)).then(() => Router.render());
+  },
+  async ensureValidToken() {
+    if (this.accessToken && Date.now() < this.tokenExpiresAt - 60000) return true;
+    if (!this.tokenClient) return false;
+    return new Promise((resolve) => {
+      const prevCallback = this.tokenClient.callback;
+      this.tokenClient.callback = (resp) => { this.onToken(resp); resolve(!resp.error); this.tokenClient.callback = prevCallback; };
+      this.tokenClient.requestAccessToken({ prompt: '' }); // silent refresh if still consented this session
+    });
+  },
+  connect() {
+    const clientId = Settings.get('googleClientId');
+    if (!clientId) { toast('Add your Google Client ID below first'); return; }
+    if (typeof google === 'undefined' || !google.accounts) { toast('Google sign-in script hasn\'t loaded — check your connection and try again'); return; }
+    if (!this.tokenClient) this.init();
+    if (!this.tokenClient) { toast('Could not start Google sign-in'); return; }
+    this.tokenClient.requestAccessToken({ prompt: 'consent' });
+  },
+  disconnect() {
+    if (this.accessToken && typeof google !== 'undefined' && google.accounts) {
+      google.accounts.oauth2.revoke(this.accessToken, () => {});
+    }
+    this.accessToken = null; this.tokenExpiresAt = 0; this.connected = false;
+    Settings.set('googleWasConnected', false);
+    Settings.set('googleFolderId', '').then(() => Settings.set('googleFileId', ''));
+    toast('Disconnected from Google Drive');
+    Router.render();
+  },
+  async driveFetch(url, options = {}) {
+    const ok = await this.ensureValidToken();
+    if (!ok) throw new Error('Not signed in');
+    const res = await fetch(url, { ...options, headers: { ...(options.headers || {}), Authorization: 'Bearer ' + this.accessToken } });
+    if (!res.ok) { const t = await res.text().catch(() => ''); throw new Error(`Drive API ${res.status}: ${t.slice(0, 200)}`); }
+    return res;
+  },
+  async ensureFileId() {
+    let folderId = Settings.get('googleFolderId');
+    if (!folderId) {
+      const q = encodeURIComponent(`name='${this.DRIVE_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
+      const res = await this.driveFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)`);
+      const found = (await res.json()).files || [];
+      if (found.length) folderId = found[0].id;
+      else {
+        const created = await this.driveFetch('https://www.googleapis.com/drive/v3/files', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: this.DRIVE_FOLDER_NAME, mimeType: 'application/vnd.google-apps.folder' })
+        });
+        folderId = (await created.json()).id;
+      }
+      await Settings.set('googleFolderId', folderId);
+    }
+    let fileId = Settings.get('googleFileId');
+    if (!fileId) {
+      const q = encodeURIComponent(`name='${this.DRIVE_FILE_NAME}' and '${folderId}' in parents and trashed=false`);
+      const res = await this.driveFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)`);
+      const found = (await res.json()).files || [];
+      if (found.length) fileId = found[0].id;
+      else {
+        const created = await this.driveFetch('https://www.googleapis.com/drive/v3/files', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: this.DRIVE_FILE_NAME, parents: [folderId], mimeType: 'application/json' })
+        });
+        fileId = (await created.json()).id;
+      }
+      await Settings.set('googleFileId', fileId);
+    }
+    return fileId;
+  },
+  async syncNow(silent) {
+    if (this.syncing) return;
+    if (!this.connected) { if (!silent) toast('Connect Google Drive first'); return; }
+    this.syncing = true;
+    try {
+      const fileId = await this.ensureFileId();
+      const data = BackupService.buildBackupObject();
+      await this.driveFetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data)
+      });
+      this.dirty = false;
+      await Settings.set('googleLastSynced', nowISO());
+      if (!silent) toast('Synced to Google Drive');
+      if (UI.route === 'settings') Router.render();
+    } catch (e) {
+      console.warn('Drive sync failed', e);
+      if (!silent) toast('Sync failed — ' + e.message);
+    } finally { this.syncing = false; }
+  },
+  async restoreFromDrive() {
+    if (!this.connected) { toast('Connect Google Drive first'); return; }
+    if (!confirm('Pull your data from Google Drive and merge it into what\'s on this device? Nothing here is deleted, but Drive\'s version of any matching item will win.')) return;
+    try {
+      const fileId = await this.ensureFileId();
+      const res = await this.driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`);
+      const data = await res.json();
+      await BackupService.mergeBackupObject(data);
+      toast('Restored from Google Drive');
+    } catch (e) {
+      console.warn('Drive restore failed', e);
+      toast('Restore failed — ' + e.message);
+    }
   }
 };
 
@@ -2122,6 +2350,12 @@ async function boot() {
     navigator.serviceWorker.register('sw.js').then((reg) => {
       reg.update().catch(() => {}); // proactively check for a newer version right away
     }).catch(() => { /* fine if not hosted */ });
+  }
+  // Google's gsi/client script loads async — try now, and retry shortly if it
+  // isn't ready yet (only matters if a Client ID has already been saved).
+  DriveSync.init();
+  if (!DriveSync.tokenClient && Settings.get('googleClientId')) {
+    setTimeout(() => DriveSync.init(), 1500);
   }
 }
 boot();

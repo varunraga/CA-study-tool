@@ -42,6 +42,20 @@ The service worker (`sw.js`) now uses a **network-first** strategy and self-upda
 - Your saved notes/data live in IndexedDB, completely separate from this caching — updating the app files never touches your data.
 - `sw.js` has a `CACHE_NAME` version string (`castudy-cache-v2`) — bump it (e.g. `-v3`) each time you redeploy, so old cached files are cleanly discarded rather than lingering.
 
+## Google Drive Sync
+
+Settings → "Google Drive Sync" backs up your **data** (notes, questions, mnemonics, etc. — the same content as the local JSON export, not the app's own HTML/JS files) to a file in your own Google Drive, inside a folder this app creates called "CA Study." It uses a `drive.file`-scoped OAuth connection, meaning the app can only ever see or touch files it created itself — never anything else in your Drive.
+
+**A Client ID is already embedded** — you don't need to set one up yourself unless you redeploy this app under a different hosting URL (Client IDs are locked to a specific "Authorized JavaScript origins" allowlist in Google Cloud Console; a Client ID is a public identifier, not a secret, so embedding it is fine — the actual security boundary is that origin allowlist). If you do redeploy elsewhere, instructions for creating your own are right there in Settings.
+
+**To connect**: go to Settings → Google Drive Sync → **Connect Google Drive**, approve the consent screen once. That one click is unavoidable — browsers block OAuth popups that aren't triggered by a direct click, and Google requires explicit consent the first time no matter what. After that, it reconnects silently on every future visit — no repeated sign-in prompts.
+
+**Important**: Google sign-in requires the app be served over **http(s)** — it will not work opened as a local `file://` page.
+
+**How syncing behaves**: after that first connect, it's genuinely near-real-time. Any change you make triggers a sync almost immediately; if you're actively typing, rapid changes are throttled (at most one push every ~10 seconds) so it's not hammering the Drive API on every keystroke, but a trailing sync a few seconds after you pause guarantees the final state still gets pushed — plus a 60-second safety-net check in case anything slips through. There's also a manual **Sync now** button, and **Restore from Drive** to pull your data down onto a new device or browser (merges in — Drive's version wins for anything that overlaps).
+
+**Limits worth knowing**: PDFs themselves aren't included (large binary files — same exclusion as the local JSON backup); it's a single continuously-overwritten backup file, not version history (use Drive's own "manage versions" on that file if you want that); and this genuinely could not be end-to-end tested with a real Google account in this build environment — everything short of the actual Google handshake (the UI, the settings flow, the embedded-default behavior, the throttle/trailing sync timing, graceful failure when offline or not connected, the backup-building/merging logic shared with local export/import) was tested directly and passes, but treat the very first real connect+sync as worth double-checking yourself.
+
 ## Design
 
 The interface was given a full visual identity pass: "Working Ledger" — grounded in actual accounting practice (ledger paper, ink, brass seals, dotted leader-lines) rather than a generic SaaS look. Pale sage ledger-paper background with a subtle ruled-paper texture, deep ink-green text, a brass/gold primary accent (seals, stamps, primary buttons), and red-ink for alerts/danger. Headings use IBM Plex Serif (an official, certificate-like feel); UI text uses IBM Plex Sans; **every number, date, and figure uses IBM Plex Mono** — a deliberate choice, since accountants align figures in columns. The sidebar reads like a ledger's tab index (brass spine strip, tab-style active states); the Dashboard opens with a "Today's Entry" journal spread — the one bold, memorable design move — instead of generic stat cards. Both light ("day ledger") and dark ("night ledger") themes are fully covered.
