@@ -57,6 +57,38 @@ function richTextExtrasHTML() {
     <button onmousedown="event.preventDefault();document.execCommand('undo')" title="Undo (Ctrl/Cmd+Z)">↶ Undo</button>
     <button onmousedown="event.preventDefault();document.execCommand('redo')" title="Redo (Ctrl/Cmd+Shift+Z, or Ctrl+Y)">↷ Redo</button>`;
 }
+/* PDF text is made of individually-positioned per-word/per-fragment spans
+   (that's just how PDF text extraction works), so a raw selection's
+   getClientRects() returns one tiny rect per word with gaps between them —
+   the "picket fence" look. Real PDF readers merge same-line rects into one
+   continuous band; these two helpers do that, one for live DOMRects (at
+   the moment of selection, CSS-pixel space) and one for already-stored
+   {x,y,w,h} page-space rects (so even old, already-granular highlights
+   render/export cleanly without needing any data migration).
+   Slight vertical variation between adjacent glyphs (subscripts, accents,
+   font metrics) is tolerated within lineTolerance before starting a new line. */
+function mergeLineRectsDOM(domRectList, lineTolerance) {
+  const tol = lineTolerance || 3;
+  const rects = Array.from(domRectList).filter(r => r.width > 0.5 && r.height > 0.5);
+  const lines = [];
+  rects.forEach(r => {
+    let line = lines.find(l => Math.abs(l.top - r.top) < tol && Math.abs(l.height - r.height) < tol);
+    if (!line) { line = { top: r.top, height: r.height, left: r.left, right: r.left + r.width }; lines.push(line); }
+    else { line.left = Math.min(line.left, r.left); line.right = Math.max(line.right, r.left + r.width); line.top = Math.min(line.top, r.top); line.height = Math.max(line.height, r.height); }
+  });
+  return lines.map(l => ({ left: l.left, top: l.top, width: l.right - l.left, height: l.height }));
+}
+function mergeLineRectsXYWH(rects, lineTolerance) {
+  const tol = lineTolerance || 2;
+  const filtered = (rects || []).filter(r => r.w > 0.3 && r.h > 0.3);
+  const lines = [];
+  filtered.forEach(r => {
+    let line = lines.find(l => Math.abs(l.y - r.y) < tol && Math.abs(l.h - r.h) < tol);
+    if (!line) { line = { y: r.y, h: r.h, x: r.x, right: r.x + r.w }; lines.push(line); }
+    else { line.x = Math.min(line.x, r.x); line.right = Math.max(line.right, r.x + r.w); line.y = Math.min(line.y, r.y); line.h = Math.max(line.h, r.h); }
+  });
+  return lines.map(l => ({ x: l.x, y: l.y, w: l.right - l.x, h: l.h }));
+}
 function downloadText(filename, text, mime) {
   const blob = new Blob([text], { type: mime || 'text/plain' });
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename; a.click();
@@ -1122,6 +1154,7 @@ const Bookmarks = {
 /* ============================== PDF LIBRARY ============================== */
 let pdfDocCache = null, pdfCurrentPage = 1, pdfScale = 1.2, pdfPageObj = null, pdfStickyMode = false, pdfSplitMode = false, pdfSplitNoteId = null;
 let pdfDrawMode = false, pdfDrawTool = 'pen', pdfDrawColor = '#202A22', pdfDrawing = false, pdfDrawStart = null, pdfCurrentStroke = [];
+let pdfUndoStack = [], pdfRedoStack = []; // unified undo/redo across highlights, underlines, sticky notes and drawings for the current PDF
 
 /* Minimal selectable text layer, built the same way pdf.js's own viewer does:
    one absolutely-positioned, transparent span per text item, sized/rotated
@@ -1194,6 +1227,7 @@ const Pdfs = {
     if (!rec) return `<div class="empty-state"><h3>PDF not found</h3></div>`;
     setTimeout(() => Pdfs.load(rec), 30);
     pdfSplitMode = false; pdfSplitNoteId = null; pdfDrawMode = false; pdfDrawTool = 'pen'; pdfDrawColor = '#202A22';
+    pdfUndoStack = []; pdfRedoStack = [];
     const drawColors = ['#202A22', '#A23B2E', '#A9822E', '#2f6fc9', '#3f8a53'];
     return `
     <div class="pdf-shell">
@@ -1205,6 +1239,8 @@ const Pdfs = {
         <button class="icon-btn" onclick="Pdfs.nextPage()" title="Next page">Next ›</button>
         <button class="icon-btn" onclick="Pdfs.zoom(-0.15)" title="Zoom out" aria-label="Zoom out">−</button>
         <button class="icon-btn" onclick="Pdfs.zoom(0.15)" title="Zoom in" aria-label="Zoom in">+</button>
+        <button class="icon-btn" id="pdfUndoBtn" onclick="Pdfs.undo()" title="Undo the last highlight, underline, sticky note or drawing" disabled>↶ Undo</button>
+        <button class="icon-btn" id="pdfRedoBtn" onclick="Pdfs.redo()" title="Redo" disabled>↷ Redo</button>
         <button class="icon-btn" onclick="Pdfs.bookmarkPage('${id}')" title="Bookmark this page for quick return">🔖 Bookmark page</button>
         <button class="icon-btn" id="stickyBtn" onclick="Pdfs.toggleStickyMode()" title="Click a spot on the page to drop a sticky note there">📌 Sticky note</button>
         <button class="icon-btn" id="drawBtn" onclick="Pdfs.toggleDrawMode()" title="Draw freehand ink, an arrow, or a rectangle on this page">✏ Draw</button>
@@ -1219,7 +1255,6 @@ const Pdfs = {
         <div class="sep"></div>
         ${drawColors.map((c, i) => `<span class="draw-color-dot ${i === 0 ? 'selected' : ''}" data-color="${c}" style="background:${c};" onclick="Pdfs.setDrawColor('${c}')" title="Use this color"></span>`).join('')}
         <div class="sep"></div>
-        <button onclick="Pdfs.undoLastDrawing()" title="Remove the last stroke drawn on this page">↺ Undo</button>
         <button onclick="Pdfs.clearPageDrawings()" title="Remove all drawings on this page">🗑 Clear page</button>
         <button class="btn sm" onclick="Pdfs.toggleDrawMode()" title="Exit drawing mode">Done</button>
       </div>
@@ -1302,18 +1337,20 @@ const Pdfs = {
     const text = sel.toString();
     const wrap = document.getElementById('pdfPageWrap');
     const wrapRect = wrap.getBoundingClientRect();
-    const rects = Array.from(range.getClientRects()).map(r => ({
+    const merged = mergeLineRectsDOM(range.getClientRects());
+    const rects = merged.map(r => ({
       x: (r.left - wrapRect.left) / pdfScale, y: (r.top - wrapRect.top) / pdfScale,
       w: r.width / pdfScale, h: r.height / pdfScale
     }));
     sel.removeAllRanges();
     document.getElementById('pdfSelToolbar')?.remove();
     if (!rects.length) return;
-    await saveItem('annotations', {
+    const saved = await saveItem('annotations', {
       id: uid(), targetType: 'pdf', pdfId: UI.params.id, page: pdfCurrentPage,
       kind: kind === 'underline' ? 'underline' : 'highlight', color: kind === 'underline' ? '' : color,
       rects, text: text.slice(0, 140), comment: '', createdAt: nowISO()
     });
+    Pdfs.pushUndo({ type: 'create', data: saved });
     Pdfs.refreshOverlayAndPanel();
     toast(kind === 'underline' ? 'Underlined' : 'Highlighted');
   },
@@ -1336,7 +1373,7 @@ const Pdfs = {
     const text = prompt('Sticky note text:');
     if (!text) return;
     saveItem('annotations', { id: uid(), targetType: 'pdf', pdfId: UI.params.id, page: pdfCurrentPage, kind: 'sticky', x, y, comment: text, text: '', createdAt: nowISO() })
-      .then(() => Pdfs.refreshOverlayAndPanel());
+      .then((saved) => { Pdfs.pushUndo({ type: 'create', data: saved }); Pdfs.refreshOverlayAndPanel(); });
   },
 
   /* ---- freehand drawing: pen, arrow, rectangle ---- */
@@ -1397,10 +1434,11 @@ const Pdfs = {
     if (pdfDrawTool !== 'pen' && dist < 4) { pdfCurrentStroke = []; Pdfs.redrawInkCanvas(); return; } // ignore accidental taps
     const pts = pdfCurrentStroke.map(p => ({ x: p.x / pdfScale, y: p.y / pdfScale }));
     const kind = pdfDrawTool === 'pen' ? 'ink' : pdfDrawTool; // 'ink' | 'arrow' | 'rect'
-    await saveItem('annotations', {
+    const saved = await saveItem('annotations', {
       id: uid(), targetType: 'pdf', pdfId: UI.params.id, page: pdfCurrentPage,
       kind, points: pts, color: pdfDrawColor, createdAt: nowISO()
     });
+    Pdfs.pushUndo({ type: 'create', data: saved });
     pdfCurrentStroke = [];
     Pdfs.redrawInkCanvas();
     Pdfs.refreshSidePanel();
@@ -1446,20 +1484,11 @@ const Pdfs = {
       Pdfs.drawArrow(ctx, p1.x, p1.y, p2.x, p2.y, a.color);
     }
   },
-  async undoLastDrawing() {
-    const items = (Cache.annotations || []).filter(a => a.targetType === 'pdf' && a.pdfId === UI.params.id && a.page === pdfCurrentPage && ['ink', 'arrow', 'rect'].includes(a.kind));
-    if (!items.length) { toast('Nothing to undo on this page'); return; }
-    const last = items[items.length - 1];
-    await DB.del('annotations', last.id);
-    Cache.annotations = Cache.annotations.filter(x => x.id !== last.id);
-    Pdfs.redrawInkCanvas();
-    Pdfs.refreshSidePanel();
-  },
   async clearPageDrawings() {
     const items = (Cache.annotations || []).filter(a => a.targetType === 'pdf' && a.pdfId === UI.params.id && a.page === pdfCurrentPage && ['ink', 'arrow', 'rect'].includes(a.kind));
     if (!items.length) { toast('No drawings on this page'); return; }
     if (!confirm(`Remove all ${items.length} drawing(s) on this page?`)) return;
-    for (const a of items) await DB.del('annotations', a.id);
+    for (const a of items) { await DB.del('annotations', a.id); Pdfs.pushUndo({ type: 'delete', data: a }); }
     const ids = new Set(items.map(a => a.id));
     Cache.annotations = Cache.annotations.filter(a => !ids.has(a.id));
     Pdfs.redrawInkCanvas();
@@ -1467,10 +1496,56 @@ const Pdfs = {
   },
   async deleteDrawing(id) {
     if (!confirm('Delete this drawing?')) return;
+    const a = Cache.annotations.find(x => x.id === id);
     await DB.del('annotations', id);
-    Cache.annotations = Cache.annotations.filter(a => a.id !== id);
+    Cache.annotations = Cache.annotations.filter(x => x.id !== id);
+    if (a) Pdfs.pushUndo({ type: 'delete', data: a });
     Pdfs.redrawInkCanvas();
     Pdfs.refreshSidePanel();
+  },
+
+  /* ---- unified undo/redo across highlights, underlines, sticky notes and drawings ---- */
+  pushUndo(action) {
+    pdfUndoStack.push(action);
+    pdfRedoStack = [];
+    Pdfs.updateUndoRedoButtons();
+  },
+  updateUndoRedoButtons() {
+    const u = document.getElementById('pdfUndoBtn'), r = document.getElementById('pdfRedoBtn');
+    if (u) u.disabled = pdfUndoStack.length === 0;
+    if (r) r.disabled = pdfRedoStack.length === 0;
+  },
+  async applyUndoRedoAction(action, direction) {
+    // direction: 'undo' reverses the action; 'redo' re-applies it
+    const isCreate = action.type === 'create';
+    const shouldExist = direction === 'undo' ? !isCreate : isCreate;
+    if (shouldExist) {
+      await DB.put('annotations', action.data);
+      if (!Cache.annotations.some(a => a.id === action.data.id)) Cache.annotations.push(action.data);
+    } else {
+      await DB.del('annotations', action.data.id);
+      Cache.annotations = Cache.annotations.filter(a => a.id !== action.data.id);
+    }
+  },
+  async undo() {
+    const action = pdfUndoStack.pop();
+    if (!action) { toast('Nothing to undo'); return; }
+    await Pdfs.applyUndoRedoAction(action, 'undo');
+    pdfRedoStack.push(action);
+    Pdfs.refreshOverlayAndPanel();
+    Pdfs.redrawInkCanvas();
+    Pdfs.updateUndoRedoButtons();
+    toast('Undone');
+  },
+  async redo() {
+    const action = pdfRedoStack.pop();
+    if (!action) { toast('Nothing to redo'); return; }
+    await Pdfs.applyUndoRedoAction(action, 'redo');
+    pdfUndoStack.push(action);
+    Pdfs.refreshOverlayAndPanel();
+    Pdfs.redrawInkCanvas();
+    Pdfs.updateUndoRedoButtons();
+    toast('Redone');
   },
 
   /* ---- burned-in annotated PDF export ----
@@ -1502,11 +1577,11 @@ const Pdfs = {
           const col = hexToRgbFloat(a.color || '#202A22');
           const pdfColor = rgb(col.r, col.g, col.b);
           if (a.kind === 'highlight') {
-            (a.rects || []).forEach(r => {
+            mergeLineRectsXYWH(a.rects).forEach(r => {
               page.drawRectangle({ x: r.x, y: pageHeight - r.y - r.h, width: r.w, height: r.h, color: pdfColor, opacity: 0.45 });
             });
           } else if (a.kind === 'underline') {
-            (a.rects || []).forEach(r => {
+            mergeLineRectsXYWH(a.rects).forEach(r => {
               const y = pageHeight - r.y - r.h;
               page.drawLine({ start: { x: r.x, y }, end: { x: r.x + r.w, y }, thickness: 1.6, color: pdfColor });
             });
@@ -1585,8 +1660,10 @@ const Pdfs = {
     Pdfs.refreshOverlayAndPanel();
   },
   async deleteAnnotation(id) {
+    const a = Cache.annotations.find(x => x.id === id);
     await DB.del('annotations', id);
-    Cache.annotations = Cache.annotations.filter(a => a.id !== id);
+    Cache.annotations = Cache.annotations.filter(x => x.id !== id);
+    if (a) Pdfs.pushUndo({ type: 'delete', data: a });
     Modal.close();
     Pdfs.refreshOverlayAndPanel();
   },
@@ -1614,7 +1691,7 @@ const Pdfs = {
         icon.onclick = (ev) => { ev.stopPropagation(); Pdfs.openSticky(a.id); };
         overlay.appendChild(icon);
       } else {
-        (a.rects || []).forEach(r => {
+        mergeLineRectsXYWH(a.rects).forEach(r => {
           const div = document.createElement('div');
           div.className = 'pdf-hl-rect' + (a.kind === 'underline' ? ' underline' : '');
           div.style.left = (r.x * pdfScale) + 'px'; div.style.top = (r.y * pdfScale) + 'px';
@@ -1635,8 +1712,13 @@ const Pdfs = {
   sidePanelHTML(pdfId) {
     const bookmarks = (Cache.pdfBookmarks || []).filter(b => b.pdfId === pdfId);
     const pageAnnots = (Cache.annotations || []).filter(a => a.targetType === 'pdf' && a.pdfId === pdfId && a.page === pdfCurrentPage);
+    const legendColors = Settings.get('highlightColors');
     return `
-      <h4 style="font-size:12px;text-transform:uppercase;color:var(--text-dim);margin-top:0;">This page</h4>
+      <h4 style="font-size:12px;text-transform:uppercase;color:var(--text-dim);margin-top:0;">Highlight legend</h4>
+      <div style="margin-bottom:14px;">
+        ${legendColors.map(c => `<span class="tag" style="border-color:${c.color}"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${c.color};margin-right:4px;"></span>${esc(c.label)}</span>`).join('')}
+      </div>
+      <h4 style="font-size:12px;text-transform:uppercase;color:var(--text-dim);">This page</h4>
       ${pageAnnots.length ? pageAnnots.map(a => {
       const isDrawing = ['ink', 'arrow', 'rect'].includes(a.kind);
       const icon = a.kind === 'sticky' ? '📝' : a.kind === 'underline' ? '‾' : a.kind === 'ink' ? '✏' : a.kind === 'arrow' ? '↗' : a.kind === 'rect' ? '▭' : '🖍';
