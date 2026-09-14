@@ -17,7 +17,7 @@ Open `index.html` in a browser (double-click it, or host the folder on a static 
 
 ---
 
-## 2. Building your course structure
+## 2. Building your course structure — the Subjects hub
 
 Everything else in the app (notes, questions, mnemonics) hangs off this structure:
 
@@ -27,16 +27,17 @@ Course  →  Subject  →  Chapter  →  Topic  →  (your notes, questions, mne
 
 Example: `CA Intermediate → GST → Input Tax Credit → Section 16 — Eligibility`
 
-**To build it**, use the sidebar tree on the left:
-1. Click **"+ course"** next to "My Courses" → name it (e.g. "CA Intermediate", "CA Final").
-2. Click the little **+** that appears when you hover over the course row → adds a subject.
-3. Hover over a subject → click **+** → adds a chapter.
-4. Hover over a chapter → click **+** → adds a topic.
-5. Click any topic to open it — that's where you'll add notes, mnemonics and questions for it.
+**This is the heart of the app**, so it gets its own dedicated page — **sidebar → 📚 Subjects** (also reachable via the "Browse" button on mobile). It's a visual drill-down, not a nested list:
 
-**Reordering**: click and drag any subject, chapter, topic, or note (within its topic) to reorder it. It remembers the order permanently.
+1. **Overview**: your courses, each showing its subjects as a card grid. Click **"+ Course"** (top right) to add a course; click **"+ Subject"** under a course to add one. Every subject gets an in-app modal to name it and — new — **pick a color** from an 8-swatch palette. That color follows the subject everywhere: its card border, its progress ring, its detail page.
+2. Each subject card shows a live **progress ring** (% of its notes marked "mastered") plus quick counts (chapters, topics, notes). **Click a card** to open that subject.
+3. **Subject page**: a bigger version of the same ring, full stats, and its list of chapters. **"+ Chapter"** adds one; **"🎨 Color"** lets you change the subject's color anytime.
+4. **Click a chapter** to see its topics (note/mnemonic/question counts per topic). **"+ Topic"** adds one.
+5. **Click a topic** to open it — that's where you'll add notes, mnemonics and questions for it (§9 below). Its breadcrumb at the top is clickable, so you can jump straight back to the subject or chapter without retracing your steps.
 
-**Deleting**: hover over any row → a small **✕** appears next to the **+**. Deleting a subject/chapter/topic asks you to confirm first, and tells you exactly how much is inside it. Anything with real content (notes, mnemonics, questions, jargons) is moved to **Trash**, not destroyed — you can restore it later. See §13.
+**Reordering**: click and drag any subject card, chapter row, topic row, or note (within its topic) to reorder it. It remembers the order permanently.
+
+**Deleting**: a small **✕** sits on every card and row. Deleting a subject/chapter/topic asks you to confirm first, and tells you exactly how much is inside it. Anything with real content (notes, mnemonics, questions, jargons) is moved to **Trash**, not destroyed — you can restore it later. See §14.
 
 ---
 

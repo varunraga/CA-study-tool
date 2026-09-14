@@ -336,6 +336,7 @@ const Modal = {
 };
 
 /* ============================== COURSE / SUBJECT / CHAPTER / TOPIC TREE ============================== */
+const SUBJECT_COLORS = ['#D9B24C', '#E5534B', '#4FAE71', '#5B9BE0', '#B07CD9', '#45B8AC', '#E07BA8', '#E08A45'];
 const Courses = {
   promptNew() {
     Modal.open('New Course', `
@@ -350,23 +351,73 @@ const Courses = {
     await saveItem('courses', { id: uid(), name, createdAt: nowISO() });
     Modal.close(); Tree.render(); toast('Course created');
   },
-  async promptNewSubject(courseId) {
-    const name = prompt('Subject name?'); if (!name) return;
-    const order = (Cache.subjects || []).filter(s => s.courseId === courseId).length;
-    await saveItem('subjects', { id: uid(), courseId, name, color: '#6b5b3e', order, createdAt: nowISO() });
-    Tree.render(); toast('Subject added');
+  promptNewSubject(courseId) {
+    Modal.open('New Subject', `
+      <label>Subject name</label><input type="text" id="mSubjectName" placeholder="e.g. GST" title="Subject name">
+      <label>Color</label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;">
+        ${SUBJECT_COLORS.map((c, i) => `<span class="subject-color-swatch ${i === 0 ? 'selected' : ''}" data-color="${c}" style="background:${c};" onclick="Courses.pickSubjectColor(this)" title="Use this color"></span>`).join('')}
+      </div>
+      <input type="hidden" id="mSubjectColor" value="${SUBJECT_COLORS[0]}">
+      <div class="modal-actions"><button class="btn secondary" onclick="Modal.close()" title="Discard and close this dialog">Cancel</button>
+      <button class="btn" onclick="Courses.createSubject('${courseId}')" title="Create this subject">Create</button></div>`);
+    setTimeout(() => document.getElementById('mSubjectName')?.focus(), 50);
   },
-  async promptNewChapter(subjectId) {
-    const name = prompt('Chapter name?'); if (!name) return;
+  pickSubjectColor(el) {
+    const container = el.parentElement;
+    container.querySelectorAll('.subject-color-swatch').forEach(s => s.classList.remove('selected'));
+    el.classList.add('selected');
+    const hidden = container.parentElement.querySelector('#mSubjectColor');
+    if (hidden) hidden.value = el.dataset.color;
+  },
+  async createSubject(courseId) {
+    const name = document.getElementById('mSubjectName').value.trim(); if (!name) return;
+    const color = document.getElementById('mSubjectColor').value;
+    const order = (Cache.subjects || []).filter(s => s.courseId === courseId).length;
+    await saveItem('subjects', { id: uid(), courseId, name, color, order, createdAt: nowISO() });
+    Modal.close(); Tree.render(); toast('Subject added');
+  },
+  editSubjectColor(id) {
+    const s = (Cache.subjects || []).find(x => x.id === id); if (!s) return;
+    Modal.open(`Color for "${s.name}"`, `
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        ${SUBJECT_COLORS.map(c => `<span class="subject-color-swatch ${c === s.color ? 'selected' : ''}" data-color="${c}" style="background:${c};" onclick="Courses.pickSubjectColor(this)" title="Use this color"></span>`).join('')}
+      </div>
+      <input type="hidden" id="mSubjectColor" value="${s.color || SUBJECT_COLORS[0]}">
+      <div class="modal-actions"><button class="btn secondary" onclick="Modal.close()" title="Cancel">Cancel</button>
+      <button class="btn" onclick="Courses.saveSubjectColor('${id}')" title="Save this color">Save</button></div>`);
+  },
+  async saveSubjectColor(id) {
+    const s = (Cache.subjects || []).find(x => x.id === id); if (!s) return;
+    s.color = document.getElementById('mSubjectColor').value;
+    await saveItem('subjects', s);
+    Modal.close(); Tree.render();
+  },
+  promptNewChapter(subjectId) {
+    Modal.open('New Chapter', `
+      <label>Chapter name</label><input type="text" id="mChapterName" placeholder="e.g. Input Tax Credit" title="Chapter name">
+      <div class="modal-actions"><button class="btn secondary" onclick="Modal.close()" title="Discard and close this dialog">Cancel</button>
+      <button class="btn" onclick="Courses.createChapter('${subjectId}')" title="Create this chapter">Create</button></div>`);
+    setTimeout(() => document.getElementById('mChapterName')?.focus(), 50);
+  },
+  async createChapter(subjectId) {
+    const name = document.getElementById('mChapterName').value.trim(); if (!name) return;
     const order = (Cache.chapters || []).filter(c => c.subjectId === subjectId).length;
     await saveItem('chapters', { id: uid(), subjectId, name, order, createdAt: nowISO() });
-    Tree.render(); toast('Chapter added');
+    Modal.close(); Tree.render(); toast('Chapter added');
   },
-  async promptNewTopic(chapterId) {
-    const name = prompt('Topic name?'); if (!name) return;
+  promptNewTopic(chapterId) {
+    Modal.open('New Topic', `
+      <label>Topic name</label><input type="text" id="mTopicName" placeholder="e.g. Section 16 — Eligibility" title="Topic name">
+      <div class="modal-actions"><button class="btn secondary" onclick="Modal.close()" title="Discard and close this dialog">Cancel</button>
+      <button class="btn" onclick="Courses.createTopic('${chapterId}')" title="Create this topic">Create</button></div>`);
+    setTimeout(() => document.getElementById('mTopicName')?.focus(), 50);
+  },
+  async createTopic(chapterId) {
+    const name = document.getElementById('mTopicName').value.trim(); if (!name) return;
     const order = (Cache.topics || []).filter(t => t.chapterId === chapterId).length;
     await saveItem('topics', { id: uid(), chapterId, name, order, createdAt: nowISO() });
-    Tree.render(); toast('Topic added');
+    Modal.close(); Tree.render(); toast('Topic added');
   },
   async deleteTopic(id, opts = {}) {
     const t = (Cache.topics || []).find(x => x.id === id); if (!t) return false;
@@ -442,14 +493,13 @@ const Courses = {
 };
 
 const Tree = {
-  expanded: new Set(),
-  render() {
-    const el = document.getElementById('courseTree');
-    const courses = Cache.courses || [];
-    if (!courses.length) { el.innerHTML = `<div class="subtle" style="padding:8px;">No courses yet.</div>`; return; }
-    el.innerHTML = courses.map(c => this.renderCourse(c)).join('');
-  },
-  toggle(id) { this.expanded.has(id) ? this.expanded.delete(id) : this.expanded.add(id); this.render(); },
+  /* Tree used to render the sidebar's nested subject list directly — that's
+     gone now (see SubjectsHub, the dedicated Subjects page). This module is
+     kept for its drag-and-drop reorder logic, reused by SubjectsHub's cards.
+     render() is called from many places whenever the subject/chapter/topic
+     structure changes (create, delete, reorder) — it just means "something
+     changed, refresh whatever's currently showing it". */
+  render() { if (UI.route === 'subjects') Router.render(); },
   dragStart(e, kind, id) { e.dataTransfer.setData('text/plain', JSON.stringify({ kind, id })); e.stopPropagation(); },
   allowDrop(e) { e.preventDefault(); e.stopPropagation(); },
   async onDrop(e, kind, store, parentKey, parentId, targetId) {
@@ -466,51 +516,151 @@ const Tree = {
       if (obj && obj.order !== i) { obj.order = i; await saveItem(store, obj); }
     }
     Tree.render();
+  }
+};
+
+/* ============================== SUBJECTS HUB ==============================
+   The dedicated home for browsing your syllabus — subjects (grouped by
+   course, each with its own color and a mastery ring) drilling down into
+   chapters, then topics. Replaces the old sidebar tree entirely. */
+const SubjectsHub = {
+  view: 'overview', // 'overview' | 'subject' | 'chapter'
+  subjectId: null, chapterId: null,
+  openSubject(id) { this.view = 'subject'; this.subjectId = id; this.chapterId = null; Router.render(); },
+  openChapter(id) { this.view = 'chapter'; this.chapterId = id; Router.render(); },
+  backToOverview() { this.view = 'overview'; this.subjectId = null; this.chapterId = null; Router.render(); },
+  breadcrumb(parts) {
+    return `<div class="hub-crumb">${parts.map((p, i) => `${i > 0 ? '<span class="hub-crumb-sep">›</span>' : ''}${p.onclick ? `<span class="hub-crumb-item" onclick="${p.onclick}" title="Go back">${esc(p.label)}</span>` : `<span class="hub-crumb-item current">${esc(p.label)}</span>`}`).join('')}</div>`;
   },
-  renderCourse(c) {
-    const open = this.expanded.has(c.id);
+  ring(pct, color, size, strokeW) {
+    const r = (size - strokeW) / 2, circ = 2 * Math.PI * r, offset = circ * (1 - pct / 100);
+    return `<svg viewBox="0 0 ${size} ${size}" width="${size}" height="${size}">
+      <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="var(--border)" stroke-width="${strokeW}"/>
+      <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="${color}" stroke-width="${strokeW}" stroke-linecap="round"
+        stroke-dasharray="${circ}" stroke-dashoffset="${offset}" transform="rotate(-90 ${size / 2} ${size / 2})"/>
+    </svg>`;
+  },
+  render() {
+    if (this.view === 'subject' && this.subjectId && (Cache.subjects || []).some(s => s.id === this.subjectId)) return this.renderSubjectDetail();
+    if (this.view === 'chapter' && this.chapterId && (Cache.chapters || []).some(c => c.id === this.chapterId)) return this.renderChapterDetail();
+    this.view = 'overview';
+    return this.renderOverview();
+  },
+  renderOverview() {
+    const courses = Cache.courses || [];
+    if (!courses.length) return emptyState('📚', 'Create your first course to start building your syllabus.', 'Create Course', 'Courses.promptNew()');
+    return `<div style="display:flex;justify-content:space-between;align-items:baseline;">
+      <h2 style="margin:0;">Subjects</h2>
+      <button class="btn sm secondary" onclick="Courses.promptNew()" title="Add another course">+ Course</button>
+    </div>
+    <p class="subtle" style="margin-top:6px;margin-bottom:26px;">Your whole syllabus, at a glance. Click any subject to drill in.</p>
+    ${courses.map(c => this.courseSection(c)).join('')}`;
+  },
+  courseSection(c) {
     const subjects = (Cache.subjects || []).filter(s => s.courseId === c.id).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-    return `<div class="tree-node">
-      <div class="tree-row" onclick="Tree.toggle('${c.id}')" title="Click to expand or collapse">
-        <span class="caret">${open ? '▾' : '▸'}</span><span>📚 ${esc(c.name)}</span>
-        <span class="add-mini" onclick="event.stopPropagation();Courses.promptNewSubject('${c.id}')" title="Add a subject to this course">+</span>
-        <span class="del-mini" onclick="event.stopPropagation();Courses.deleteCourse('${c.id}')" title="Delete this course">✕</span>
+    return `<div style="margin-bottom:34px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+        <h3 style="margin:0;">📘 ${esc(c.name)}</h3>
+        <div class="note-meta-row" style="margin:0;">
+          <button class="btn sm secondary" onclick="Courses.promptNewSubject('${c.id}')" title="Add a subject to this course">+ Subject</button>
+          <button class="btn sm secondary" onclick="Courses.deleteCourse('${c.id}')" title="Delete this whole course">Delete course</button>
+        </div>
       </div>
-      ${open ? `<div class="tree-children">${subjects.map(s => this.renderSubject(s)).join('') || '<div class="subtle" style="padding:4px 8px;">No subjects</div>'}</div>` : ''}
+      ${subjects.length ? `<div class="subject-grid">${subjects.map(s => this.subjectCard(s)).join('')}</div>` : `<div class="subtle">No subjects yet — click "+ Subject" to add one.</div>`}
     </div>`;
   },
-  renderSubject(s) {
-    const open = this.expanded.has(s.id);
+  subjectCard(s) {
+    const chapters = (Cache.chapters || []).filter(c => c.subjectId === s.id);
+    const topics = chapters.flatMap(c => (Cache.topics || []).filter(t => t.chapterId === c.id));
+    const notes = (Cache.notes || []).filter(n => n.subjectId === s.id);
+    const mastered = notes.filter(n => n.status === 'mastered').length;
+    const pct = notes.length ? Math.round((mastered / notes.length) * 100) : 0;
+    const color = s.color || SUBJECT_COLORS[0];
+    return `<div class="subject-card" draggable="true"
+      ondragstart="Tree.dragStart(event,'subject','${s.id}')" ondragover="Tree.allowDrop(event)"
+      ondrop="Tree.onDrop(event,'subject','subjects','courseId','${s.courseId}','${s.id}')"
+      onclick="SubjectsHub.openSubject('${s.id}')" style="border-top-color:${color};" title="Open ${esc(s.name)}">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+        <div class="subject-card-name">${esc(s.name)}</div>
+        ${this.ring(pct, color, 44, 5)}
+      </div>
+      <div class="subject-card-stats">
+        <span>${chapters.length} chapter${chapters.length === 1 ? '' : 's'}</span>
+        <span>${topics.length} topic${topics.length === 1 ? '' : 's'}</span>
+        <span>${notes.length} note${notes.length === 1 ? '' : 's'}</span>
+      </div>
+      <span class="del-mini" style="position:absolute;top:10px;right:10px;" onclick="event.stopPropagation();Courses.deleteSubject('${s.id}')" title="Delete this subject">✕</span>
+    </div>`;
+  },
+  renderSubjectDetail() {
+    const s = (Cache.subjects || []).find(x => x.id === this.subjectId);
+    const course = (Cache.courses || []).find(c => c.id === s.courseId);
     const chapters = (Cache.chapters || []).filter(c => c.subjectId === s.id).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-    return `<div class="tree-node">
-      <div class="tree-row" draggable="true"
-        ondragstart="Tree.dragStart(event,'subject','${s.id}')" ondragover="Tree.allowDrop(event)"
-        ondrop="Tree.onDrop(event,'subject','subjects','courseId','${s.courseId}','${s.id}')"
-        onclick="Tree.toggle('${s.id}')" title="Drag to reorder">
-        <span class="caret">${open ? '▾' : '▸'}</span><span>${esc(s.name)}</span>
-        <span class="add-mini" onclick="event.stopPropagation();Courses.promptNewChapter('${s.id}')" title="Add a chapter to this subject">+</span>
-        <span class="del-mini" onclick="event.stopPropagation();Courses.deleteSubject('${s.id}')" title="Delete this subject">✕</span>
+    const notes = (Cache.notes || []).filter(n => n.subjectId === s.id);
+    const questions = (Cache.questions || []).filter(q => q.subjectId === s.id);
+    const mastered = notes.filter(n => n.status === 'mastered').length;
+    const pct = notes.length ? Math.round((mastered / notes.length) * 100) : 0;
+    const color = s.color || SUBJECT_COLORS[0];
+    return `${this.breadcrumb([{ label: 'Subjects', onclick: "SubjectsHub.backToOverview()" }, { label: course?.name || '' }, { label: s.name }])}
+    <div class="subject-hero" style="border-top-color:${color};">
+      <div>
+        <h2 style="margin:0 0 8px;">${esc(s.name)}</h2>
+        <div class="note-meta-row">
+          <span class="pill">${chapters.length} chapter${chapters.length === 1 ? '' : 's'}</span>
+          <span class="pill">${notes.length} note${notes.length === 1 ? '' : 's'}</span>
+          <span class="pill">${questions.length} question${questions.length === 1 ? '' : 's'}</span>
+        </div>
+        <div class="note-meta-row" style="margin-top:16px;">
+          <button class="btn sm" onclick="Courses.promptNewChapter('${s.id}')" title="Add a chapter to this subject">+ Chapter</button>
+          <button class="btn sm secondary" onclick="Courses.editSubjectColor('${s.id}')" title="Change this subject's color">🎨 Color</button>
+          <button class="btn sm secondary" onclick="Courses.deleteSubject('${s.id}')" title="Delete this subject">Delete subject</button>
+        </div>
       </div>
-      ${open ? `<div class="tree-children">${chapters.map(c => this.renderChapter(c)).join('') || '<div class="subtle" style="padding:4px 8px;">No chapters</div>'}</div>` : ''}
+      <div style="position:relative;display:flex;align-items:center;justify-content:center;">
+        ${this.ring(pct, color, 92, 8)}
+        <div style="position:absolute;text-align:center;font-family:var(--mono);"><b style="font-size:20px;">${pct}%</b><br><span style="font-size:10px;color:var(--text-dim);">mastered</span></div>
+      </div>
+    </div>
+    <h3 style="margin-top:26px;">Chapters</h3>
+    ${chapters.length ? chapters.map(c => this.chapterRow(c)).join('') : '<div class="subtle">No chapters yet — click "+ Chapter" above to add one.</div>'}`;
+  },
+  chapterRow(c) {
+    const topics = (Cache.topics || []).filter(t => t.chapterId === c.id);
+    const notes = topics.flatMap(t => (Cache.notes || []).filter(n => n.topicId === t.id));
+    return `<div class="list-row" draggable="true"
+      ondragstart="Tree.dragStart(event,'chapter','${c.id}')" ondragover="Tree.allowDrop(event)"
+      ondrop="Tree.onDrop(event,'chapter','chapters','subjectId','${c.subjectId}','${c.id}')"
+      onclick="SubjectsHub.openChapter('${c.id}')" title="Open this chapter">
+      <span>📖</span>
+      <div style="flex:1;">${esc(c.name)}<div class="subtle">${topics.length} topic${topics.length === 1 ? '' : 's'} · ${notes.length} note${notes.length === 1 ? '' : 's'}</div></div>
+      <span class="del-mini" onclick="event.stopPropagation();Courses.deleteChapter('${c.id}')" title="Delete this chapter">✕</span>
     </div>`;
   },
-  renderChapter(c) {
-    const open = this.expanded.has(c.id);
+  renderChapterDetail() {
+    const c = (Cache.chapters || []).find(x => x.id === this.chapterId);
+    const s = (Cache.subjects || []).find(x => x.id === c.subjectId);
     const topics = (Cache.topics || []).filter(t => t.chapterId === c.id).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-    return `<div class="tree-node">
-      <div class="tree-row" draggable="true"
-        ondragstart="Tree.dragStart(event,'chapter','${c.id}')" ondragover="Tree.allowDrop(event)"
-        ondrop="Tree.onDrop(event,'chapter','chapters','subjectId','${c.subjectId}','${c.id}')"
-        onclick="Tree.toggle('${c.id}')" title="Drag to reorder">
-        <span class="caret">${open ? '▾' : '▸'}</span><span>${esc(c.name)}</span>
-        <span class="add-mini" onclick="event.stopPropagation();Courses.promptNewTopic('${c.id}')" title="Add a topic to this chapter">+</span>
-        <span class="del-mini" onclick="event.stopPropagation();Courses.deleteChapter('${c.id}')" title="Delete this chapter">✕</span>
+    return `${this.breadcrumb([{ label: 'Subjects', onclick: "SubjectsHub.backToOverview()" }, { label: s?.name || '', onclick: `SubjectsHub.openSubject('${s?.id}')` }, { label: c.name }])}
+    <div style="display:flex;justify-content:space-between;align-items:center;margin:16px 0;">
+      <h2 style="margin:0;">${esc(c.name)}</h2>
+      <div class="note-meta-row" style="margin:0;">
+        <button class="btn sm" onclick="Courses.promptNewTopic('${c.id}')" title="Add a topic to this chapter">+ Topic</button>
+        <button class="btn sm secondary" onclick="Courses.deleteChapter('${c.id}')" title="Delete this chapter">Delete chapter</button>
       </div>
-      ${open ? `<div class="tree-children">${topics.map(t => `<div class="tree-row ${UI.route === 'topic' && UI.params.id === t.id ? 'active' : ''}" draggable="true"
-        ondragstart="Tree.dragStart(event,'topic','${t.id}')" ondragover="Tree.allowDrop(event)"
-        ondrop="Tree.onDrop(event,'topic','topics','chapterId','${t.chapterId}','${t.id}')"
-        onclick="UI.nav('topic',{id:'${t.id}'})" title="Drag to reorder">📄 ${esc(t.name)}
-        <span class="del-mini" onclick="event.stopPropagation();Courses.deleteTopic('${t.id}')" title="Delete this topic">✕</span></div>`).join('') || '<div class="subtle" style="padding:4px 8px;">No topics</div>'}</div>` : ''}
+    </div>
+    ${topics.length ? topics.map(t => this.topicRow(t)).join('') : '<div class="subtle">No topics yet — click "+ Topic" above to add one.</div>'}`;
+  },
+  topicRow(t) {
+    const notes = (Cache.notes || []).filter(n => n.topicId === t.id);
+    const mnemonics = (Cache.mnemonics || []).filter(m => m.topicId === t.id);
+    const questions = (Cache.questions || []).filter(q => q.topicId === t.id);
+    return `<div class="list-row" draggable="true"
+      ondragstart="Tree.dragStart(event,'topic','${t.id}')" ondragover="Tree.allowDrop(event)"
+      ondrop="Tree.onDrop(event,'topic','topics','chapterId','${t.chapterId}','${t.id}')"
+      onclick="UI.nav('topic',{id:'${t.id}'})" title="Open this topic">
+      <span>📄</span>
+      <div style="flex:1;">${esc(t.name)}<div class="subtle">${notes.length} note${notes.length === 1 ? '' : 's'} · ${mnemonics.length} mnemonic${mnemonics.length === 1 ? '' : 's'} · ${questions.length} question${questions.length === 1 ? '' : 's'}</div></div>
+      <span class="del-mini" onclick="event.stopPropagation();Courses.deleteTopic('${t.id}')" title="Delete this topic">✕</span>
     </div>`;
   }
 };
@@ -1807,6 +1957,7 @@ const Commands = [
   { label: 'Open Dashboard', icon: '🏠', kind: 'Go to', run: () => { CmdK.close(); UI.nav('dashboard'); } },
   { label: 'Open Search & Filters', icon: '🔍', kind: 'Go to', run: () => { CmdK.close(); UI.nav('search'); } },
   { label: 'Open Analytics', icon: '📊', kind: 'Go to', run: () => { CmdK.close(); UI.nav('analytics'); } },
+  { label: 'Open Subjects', icon: '📚', kind: 'Go to', run: () => { CmdK.close(); UI.nav('subjects'); } },
   { label: 'Open PDF Library', icon: '📄', kind: 'Go to', run: () => { CmdK.close(); UI.nav('pdfs'); } },
   { label: 'Open Questions', icon: '❓', kind: 'Go to', run: () => { CmdK.close(); UI.nav('questions'); } },
   { label: 'Open Mnemonics', icon: '🧠', kind: 'Go to', run: () => { CmdK.close(); UI.nav('mnemonics'); } },
@@ -1838,8 +1989,8 @@ const CmdK = {
       label: 'Go to subject: ' + s.name, icon: '📘', kind: 'Go to',
       run: () => {
         CmdK.close();
-        Tree.expanded.add(s.courseId); Tree.expanded.add(s.id); Tree.render();
-        if (isMobileLayout()) UI.toggleSidebar();
+        SubjectsHub.view = 'subject'; SubjectsHub.subjectId = s.id; SubjectsHub.chapterId = null;
+        UI.nav('subjects');
       }
     }));
     return Commands.concat(dynamic);
@@ -2872,7 +3023,13 @@ function TopicView(id) {
   const relatedJargons = (Cache.jargons || []).filter(j => chapter && j.subjectId === chapter.subjectId);
   const relatedPdfs = (Cache.pdfs || []).filter(p => chapter && p.subjectId === chapter.subjectId);
   return `
-  <div class="subtle">${subjectName(chapter?.subjectId)} › ${esc(chapter?.name || '')}</div>
+  <div class="subtle hub-crumb" style="margin-bottom:2px;">
+    <span class="hub-crumb-item" onclick="SubjectsHub.view='overview';SubjectsHub.subjectId=null;UI.nav('subjects');" title="Back to Subjects">Subjects</span>
+    <span class="hub-crumb-sep">›</span>
+    <span class="hub-crumb-item" onclick="SubjectsHub.view='subject';SubjectsHub.subjectId='${chapter?.subjectId || ''}';UI.nav('subjects');" title="Back to ${esc(subjectName(chapter?.subjectId))}">${esc(subjectName(chapter?.subjectId))}</span>
+    <span class="hub-crumb-sep">›</span>
+    <span class="hub-crumb-item" onclick="SubjectsHub.view='chapter';SubjectsHub.chapterId='${chapter?.id || ''}';UI.nav('subjects');" title="Back to ${esc(chapter?.name || '')}">${esc(chapter?.name || '')}</span>
+  </div>
   <div style="display:flex;justify-content:space-between;align-items:baseline;">
     <h2 style="margin-top:2px;">${esc(topic.name)}</h2>
     <button class="btn sm danger" onclick="Courses.deleteTopic('${id}')" title="Delete this topic and everything inside it">Delete topic</button>
@@ -2905,6 +3062,7 @@ const Router = {
     switch (UI.route) {
       case 'dashboard': html = Dashboard.render(); break;
       case 'analytics': html = AnalyticsView.render(); break;
+      case 'subjects': html = SubjectsHub.render(); break;
       case 'search': html = SearchView.render(UI.params.q || ''); break;
       case 'topic': html = TopicView(UI.params.id); break;
       case 'note': html = Notes.render(UI.params.id); break;
@@ -2922,7 +3080,7 @@ const Router = {
       case 'settings': html = SettingsView.render(); break;
       default: html = Dashboard.render();
     }
-    el.className = 'content' + (['note'].includes(UI.route) ? '' : ' narrow');
+    el.className = 'content' + (['note', 'subjects'].includes(UI.route) ? '' : ' narrow');
     el.innerHTML = html;
     updateRevBadge();
   }

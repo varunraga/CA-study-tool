@@ -51,18 +51,12 @@ button{font-family:inherit;cursor:pointer;}
 .nav-item:hover{background:var(--bg-elev-2);color:var(--text);}
 .nav-item.active{background:var(--accent-soft);color:var(--accent);font-weight:700;box-shadow:var(--glow);}
 .nav-item .badge{margin-left:auto;background:var(--accent);color:var(--ink-on-accent);font-family:var(--mono);font-size:11px;font-weight:700;padding:1px 7px;border-radius:10px;}
+.nav-item-featured{background:linear-gradient(90deg,var(--accent-soft),transparent);color:var(--accent);font-weight:700;margin-bottom:6px;border:1px solid rgba(217,178,76,.25);}
+.nav-item-featured:hover{background:linear-gradient(90deg,var(--accent-soft),rgba(217,178,76,.06));color:var(--accent);}
+.nav-item-featured.active{box-shadow:var(--glow);}
 .tree{padding-left:2px;}
-.tree-node{font-size:13.5px;}
-.tree-row{display:flex;align-items:center;gap:6px;padding:6px 10px;border-radius:8px;cursor:pointer;color:var(--text-dim);}
-.tree-row:hover{background:var(--bg-elev-2);color:var(--text);}
-.tree-row.active{background:var(--accent-soft);color:var(--accent);font-weight:700;}
-.tree-children{padding-left:14px;border-left:1px solid var(--border);margin-left:13px;}
-.caret{width:12px;display:inline-block;color:var(--text-dim);font-size:10px;}
-.add-mini{opacity:0;font-size:12px;color:var(--text-dim);padding:0 4px;}
-.tree-row:hover .add-mini{opacity:1;}
-.del-mini{opacity:0;font-size:12px;color:var(--text-dim);padding:0 4px;}
-.tree-row:hover .del-mini{opacity:1;}
-.del-mini:hover{color:var(--danger);}
+.del-mini{opacity:.4;font-size:12px;color:var(--text-dim);padding:2px 5px;border-radius:5px;transition:opacity .12s ease;}
+.del-mini:hover{opacity:1;color:var(--danger);background:var(--danger-soft);}
 
 /* MAIN */
 .main{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden;}
@@ -97,6 +91,23 @@ button{font-family:inherit;cursor:pointer;}
 .tag:hover{border-color:var(--accent);color:var(--accent);}
 .list-row{display:flex;align-items:center;gap:10px;padding:12px;border-radius:10px;cursor:pointer;}
 .list-row:hover{background:var(--bg-elev-2);}
+
+/* SUBJECTS HUB */
+.subject-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;}
+.subject-card{position:relative;background:var(--bg-elev);border:1px solid var(--border);border-top:3px solid var(--accent);border-radius:14px;padding:18px;cursor:pointer;box-shadow:var(--shadow-card);transition:transform .12s ease,box-shadow .12s ease;}
+.subject-card:hover{transform:translateY(-3px);box-shadow:0 6px 22px rgba(0,0,0,.35);}
+.subject-card-name{font-family:var(--serif);font-size:17px;font-weight:600;line-height:1.3;padding-right:6px;}
+.subject-card-stats{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px;font-size:12px;color:var(--text-dim);}
+.subject-hero{display:flex;justify-content:space-between;align-items:center;gap:24px;background:var(--bg-elev);border:1px solid var(--border);border-top:3px solid var(--accent);border-radius:16px;padding:26px 30px;box-shadow:var(--shadow-card);flex-wrap:wrap;}
+.hub-crumb{display:flex;align-items:center;gap:6px;font-size:13px;flex-wrap:wrap;}
+.hub-crumb-item{cursor:pointer;color:var(--text-dim);}
+.hub-crumb-item:hover{color:var(--accent);text-decoration:underline;}
+.hub-crumb-item.current{color:var(--text);font-weight:700;cursor:default;}
+.hub-crumb-item.current:hover{text-decoration:none;color:var(--text);}
+.hub-crumb-sep{color:var(--text-dim);opacity:.5;}
+.subject-color-swatch{width:26px;height:26px;border-radius:50%;cursor:pointer;display:inline-block;border:2px solid transparent;}
+.subject-color-swatch.selected{box-shadow:0 0 0 2px var(--bg-elev),0 0 0 4px var(--text);}
+@media(max-width:700px){.subject-hero{flex-direction:column;align-items:flex-start;}}
 .list-row:last-child{border-bottom:none;}
 .empty-state{text-align:center;padding:60px 20px;color:var(--text-dim);}
 .empty-state h3{color:var(--text);margin-bottom:6px;}
@@ -265,6 +276,7 @@ body.focus-mode .content { max-width: 780px; margin: 0 auto; padding-top: 50px; 
     </div>
     <div class="sidebar-section">
       <button class="nav-item" data-route="dashboard" onclick="UI.nav('dashboard')" title="Today's overview: study time, revision due, recent notes">🏠 Dashboard</button>
+      <button class="nav-item nav-item-featured" data-route="subjects" onclick="UI.nav('subjects')" title="Your whole syllabus — subjects, chapters and topics, browsable and color-coded">📚 Subjects</button>
       <button class="nav-item" data-route="search" onclick="UI.nav('search')" title="Full search with filters by type, subject and sort order">🔍 Search &amp; Filters</button>
       <button class="nav-item" data-route="analytics" onclick="UI.nav('analytics')" title="Streaks, weak/strong topics, and subject breakdown">📊 Analytics</button>
       <button class="nav-item" data-route="pdfs" onclick="UI.nav('pdfs')" title="Upload, read and annotate PDFs">📄 PDF Library</button>
@@ -277,11 +289,6 @@ body.focus-mode .content { max-width: 780px; margin: 0 auto; padding-top: 50px; 
       <button class="nav-item" data-route="bookmarks" onclick="UI.nav('bookmarks')" title="Notes and PDF pages you've bookmarked">🔖 Bookmarks</button>
       <button class="nav-item" data-route="focus" onclick="UI.nav('focus')" title="Pomodoro-style study timer with session logging">⏱ Study Timer</button>
     </div>
-    <div class="sidebar-label" style="display:flex;justify-content:space-between;align-items:center;">
-      <span>My Courses</span>
-      <span class="add-mini" style="opacity:1;cursor:pointer;" onclick="Courses.promptNew()" title="Add a new course, e.g. CA Foundation, Intermediate or Final">+ course</span>
-    </div>
-    <div class="sidebar-section tree" id="courseTree"></div>
     <div style="flex:1"></div>
     <div class="sidebar-section">
       <button class="nav-item" data-route="trash" onclick="UI.nav('trash')" title="Deleted items — restore or permanently remove">🗑 Trash</button>
@@ -305,7 +312,7 @@ body.focus-mode .content { max-width: 780px; margin: 0 auto; padding-top: 50px; 
 <nav class="bottom-nav" aria-label="Primary">
   <button data-route="dashboard" onclick="UI.nav('dashboard')" aria-label="Dashboard" title="Dashboard — today's overview"><span class="bn-icon">🏠</span>Home</button>
   <button data-route="pdfs" onclick="UI.nav('pdfs')" aria-label="PDF Library" title="Your uploaded PDFs"><span class="bn-icon">📄</span>PDFs</button>
-  <button onclick="UI.toggleSidebar()" aria-label="Browse subjects" title="Browse subjects, chapters and topics"><span class="bn-icon">🗂</span>Browse</button>
+  <button data-route="subjects" onclick="UI.nav('subjects')" aria-label="Browse subjects" title="Browse subjects, chapters and topics"><span class="bn-icon">📚</span>Browse</button>
   <button data-route="revision" onclick="UI.nav('revision')" aria-label="Revision" title="Spaced-repetition revision queue"><span class="bn-icon">🔁</span>Revise</button>
   <button onclick="CmdK.open()" aria-label="Search" title="Search everything, or run a command"><span class="bn-icon">🔍</span>Search</button>
 </nav>
