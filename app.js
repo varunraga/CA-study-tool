@@ -57,6 +57,20 @@ function richTextExtrasHTML() {
     <button onmousedown="event.preventDefault();document.execCommand('undo')" title="Undo (Ctrl/Cmd+Z)">↶ Undo</button>
     <button onmousedown="event.preventDefault();document.execCommand('redo')" title="Redo (Ctrl/Cmd+Shift+Z, or Ctrl+Y)">↷ Redo</button>`;
 }
+/* Selecting text that crosses multiple lines can produce a Range whose exact
+   pixel boundary lands mid-glyph on the last word of a line — getClientRects()
+   then returns a sliver rect for that fragment (or none at all), so the
+   highlight visibly stops just short of the true end of the line. Real PDF
+   readers avoid this by snapping to whole words: this finds every word-span
+   in the text layer the Range at least partially touches, and uses each
+   span's own full bounding rect instead of the Range's raw fragment rects. */
+function getRangeWordRects(range) {
+  const layer = document.getElementById('pdfTextLayer');
+  if (!layer) return Array.from(range.getClientRects());
+  const spans = Array.from(layer.querySelectorAll('span'));
+  const rects = spans.filter(span => span.firstChild && range.intersectsNode(span)).map(span => span.getBoundingClientRect());
+  return rects.length ? rects : Array.from(range.getClientRects());
+}
 /* PDF text is made of individually-positioned per-word/per-fragment spans
    (that's just how PDF text extraction works), so a raw selection's
    getClientRects() returns one tiny rect per word with gaps between them —
@@ -1535,7 +1549,7 @@ const Pdfs = {
     const text = sel.toString();
     const wrap = document.getElementById('pdfPageWrap');
     const wrapRect = wrap.getBoundingClientRect();
-    const merged = mergeLineRectsDOM(range.getClientRects());
+    const merged = mergeLineRectsDOM(getRangeWordRects(range));
     const rects = merged.map(r => ({
       x: (r.left - wrapRect.left) / pdfScale, y: (r.top - wrapRect.top) / pdfScale,
       w: r.width / pdfScale, h: r.height / pdfScale
@@ -2832,6 +2846,20 @@ const DriveSync = {
     this.syncing = true; this.updateStatusBadge();
     try {
       const fileId = await this.ensureFileId();
+      // Pull whatever's currently on Drive and merge it in BEFORE pushing.
+      // Without this, two tabs/devices (or the installed PWA window plus a
+      // regular browser tab — easy to end up with both open) each syncing
+      // independently could push their own snapshot of "everything",
+      // silently erasing whatever the OTHER one had added that this one
+      // doesn't know about. Merging first guarantees a sync can only ever
+      // add data, never lose it, no matter which side syncs last.
+      try {
+        const res = await this.driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`);
+        const remote = await res.json();
+        if (remote && typeof remote === 'object') await BackupService.mergeBackupObject(remote);
+      } catch (mergeErr) {
+        console.warn('Pre-sync merge skipped (remote file may be empty or new)', mergeErr);
+      }
       const data = BackupService.buildBackupObject();
       await this.driveFetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data)
