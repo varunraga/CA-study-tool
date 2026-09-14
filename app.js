@@ -573,13 +573,14 @@ const SubjectsHub = {
     const chapters = (Cache.chapters || []).filter(c => c.subjectId === s.id);
     const topics = chapters.flatMap(c => (Cache.topics || []).filter(t => t.chapterId === c.id));
     const notes = (Cache.notes || []).filter(n => n.subjectId === s.id);
+    const pdfs = (Cache.pdfs || []).filter(p => p.subjectId === s.id);
     const mastered = notes.filter(n => n.status === 'mastered').length;
     const pct = notes.length ? Math.round((mastered / notes.length) * 100) : 0;
     const color = s.color || SUBJECT_COLORS[0];
     return `<div class="subject-card" draggable="true"
       ondragstart="Tree.dragStart(event,'subject','${s.id}')" ondragover="Tree.allowDrop(event)"
       ondrop="Tree.onDrop(event,'subject','subjects','courseId','${s.courseId}','${s.id}')"
-      onclick="SubjectsHub.openSubject('${s.id}')" style="border-top-color:${color};" title="Open ${esc(s.name)}">
+      onclick="SubjectsHub.openSubject('${s.id}')" style="background:linear-gradient(160deg, ${color}2A, var(--bg-elev) 62%); border-color:${color}55;" title="Open ${esc(s.name)}">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
         <div class="subject-card-name">${esc(s.name)}</div>
         ${this.ring(pct, color, 44, 5)}
@@ -588,6 +589,7 @@ const SubjectsHub = {
         <span>${chapters.length} chapter${chapters.length === 1 ? '' : 's'}</span>
         <span>${topics.length} topic${topics.length === 1 ? '' : 's'}</span>
         <span>${notes.length} note${notes.length === 1 ? '' : 's'}</span>
+        ${pdfs.length ? `<span>${pdfs.length} PDF${pdfs.length === 1 ? '' : 's'}</span>` : ''}
       </div>
       <span class="del-mini" style="position:absolute;top:10px;right:10px;" onclick="event.stopPropagation();Courses.deleteSubject('${s.id}')" title="Delete this subject">✕</span>
     </div>`;
@@ -598,17 +600,19 @@ const SubjectsHub = {
     const chapters = (Cache.chapters || []).filter(c => c.subjectId === s.id).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     const notes = (Cache.notes || []).filter(n => n.subjectId === s.id);
     const questions = (Cache.questions || []).filter(q => q.subjectId === s.id);
+    const pdfs = (Cache.pdfs || []).filter(p => p.subjectId === s.id);
     const mastered = notes.filter(n => n.status === 'mastered').length;
     const pct = notes.length ? Math.round((mastered / notes.length) * 100) : 0;
     const color = s.color || SUBJECT_COLORS[0];
     return `${this.breadcrumb([{ label: 'Subjects', onclick: "SubjectsHub.backToOverview()" }, { label: course?.name || '' }, { label: s.name }])}
-    <div class="subject-hero" style="border-top-color:${color};">
+    <div class="subject-hero" style="background:linear-gradient(135deg, ${color}22, var(--bg-elev) 58%); border-color:${color}50;">
       <div>
         <h2 style="margin:0 0 8px;">${esc(s.name)}</h2>
         <div class="note-meta-row">
           <span class="pill">${chapters.length} chapter${chapters.length === 1 ? '' : 's'}</span>
           <span class="pill">${notes.length} note${notes.length === 1 ? '' : 's'}</span>
           <span class="pill">${questions.length} question${questions.length === 1 ? '' : 's'}</span>
+          ${pdfs.length ? `<span class="pill">${pdfs.length} PDF${pdfs.length === 1 ? '' : 's'}</span>` : ''}
         </div>
         <div class="note-meta-row" style="margin-top:16px;">
           <button class="btn sm" onclick="Courses.promptNewChapter('${s.id}')" title="Add a chapter to this subject">+ Chapter</button>
@@ -627,12 +631,13 @@ const SubjectsHub = {
   chapterRow(c) {
     const topics = (Cache.topics || []).filter(t => t.chapterId === c.id);
     const notes = topics.flatMap(t => (Cache.notes || []).filter(n => n.topicId === t.id));
+    const pdfs = (Cache.pdfs || []).filter(p => p.chapterId === c.id);
     return `<div class="list-row" draggable="true"
       ondragstart="Tree.dragStart(event,'chapter','${c.id}')" ondragover="Tree.allowDrop(event)"
       ondrop="Tree.onDrop(event,'chapter','chapters','subjectId','${c.subjectId}','${c.id}')"
       onclick="SubjectsHub.openChapter('${c.id}')" title="Open this chapter">
       <span>📖</span>
-      <div style="flex:1;">${esc(c.name)}<div class="subtle">${topics.length} topic${topics.length === 1 ? '' : 's'} · ${notes.length} note${notes.length === 1 ? '' : 's'}</div></div>
+      <div style="flex:1;">${esc(c.name)}<div class="subtle">${topics.length} topic${topics.length === 1 ? '' : 's'} · ${notes.length} note${notes.length === 1 ? '' : 's'}${pdfs.length ? ` · ${pdfs.length} PDF${pdfs.length === 1 ? '' : 's'}` : ''}</div></div>
       <span class="del-mini" onclick="event.stopPropagation();Courses.deleteChapter('${c.id}')" title="Delete this chapter">✕</span>
     </div>`;
   },
@@ -654,12 +659,13 @@ const SubjectsHub = {
     const notes = (Cache.notes || []).filter(n => n.topicId === t.id);
     const mnemonics = (Cache.mnemonics || []).filter(m => m.topicId === t.id);
     const questions = (Cache.questions || []).filter(q => q.topicId === t.id);
+    const pdfs = (Cache.pdfs || []).filter(p => p.topicId === t.id);
     return `<div class="list-row" draggable="true"
       ondragstart="Tree.dragStart(event,'topic','${t.id}')" ondragover="Tree.allowDrop(event)"
       ondrop="Tree.onDrop(event,'topic','topics','chapterId','${t.chapterId}','${t.id}')"
       onclick="UI.nav('topic',{id:'${t.id}'})" title="Open this topic">
       <span>📄</span>
-      <div style="flex:1;">${esc(t.name)}<div class="subtle">${notes.length} note${notes.length === 1 ? '' : 's'} · ${mnemonics.length} mnemonic${mnemonics.length === 1 ? '' : 's'} · ${questions.length} question${questions.length === 1 ? '' : 's'}</div></div>
+      <div style="flex:1;">${esc(t.name)}<div class="subtle">${notes.length} note${notes.length === 1 ? '' : 's'} · ${mnemonics.length} mnemonic${mnemonics.length === 1 ? '' : 's'} · ${questions.length} question${questions.length === 1 ? '' : 's'}${pdfs.length ? ` · ${pdfs.length} PDF${pdfs.length === 1 ? '' : 's'}` : ''}</div></div>
       <span class="del-mini" onclick="event.stopPropagation();Courses.deleteTopic('${t.id}')" title="Delete this topic">✕</span>
     </div>`;
   }
@@ -792,8 +798,14 @@ const Notes = {
     <div class="two-col">
       <div>
         <input class="note-title-input" value="${esc(note.title)}" oninput="Notes.updateTitle('${id}', this.value)" title="Note title">
-        <div class="note-meta-row subtle">
-          ${subjectName(note.subjectId)} › ${chapterName(note.chapterId)} › ${topicName(note.topicId)}
+        <div class="hub-crumb subtle" style="margin-bottom:2px;">
+          <span class="hub-crumb-item" onclick="SubjectsHub.view='overview';SubjectsHub.subjectId=null;UI.nav('subjects');" title="Back to Subjects">Subjects</span>
+          <span class="hub-crumb-sep">›</span>
+          <span class="hub-crumb-item" onclick="SubjectsHub.view='subject';SubjectsHub.subjectId='${note.subjectId || ''}';UI.nav('subjects');" title="Back to ${esc(subjectName(note.subjectId))}">${esc(subjectName(note.subjectId))}</span>
+          <span class="hub-crumb-sep">›</span>
+          <span class="hub-crumb-item" onclick="SubjectsHub.view='chapter';SubjectsHub.chapterId='${note.chapterId || ''}';UI.nav('subjects');" title="Back to ${esc(chapterName(note.chapterId))}">${esc(chapterName(note.chapterId))}</span>
+          <span class="hub-crumb-sep">›</span>
+          <span class="hub-crumb-item" onclick="UI.nav('topic',{id:'${note.topicId || ''}'})" title="Back to ${esc(topicName(note.topicId))}">${esc(topicName(note.topicId))}</span>
         </div>
         <div class="note-meta-row" style="margin-top:8px;cursor:pointer;" onclick="Notes.editMeta('${id}')" title="Click to edit importance, exam frequency, status and tags">
           <span class="pill">Importance <span class="stars">${'★'.repeat(note.importance)}${'☆'.repeat(5 - note.importance)}</span></span>
@@ -1341,20 +1353,43 @@ const Pdfs = {
     let pageCount = 0;
     try { const doc = await pdfjsLib.getDocument({ data: buf.slice(0) }).promise; pageCount = doc.numPages; }
     catch (e) { console.warn('pdf parse warning', e); }
-    input.value = '';
+    const presetTopicId = input.dataset.presetTopic || '';
+    input.value = ''; input.removeAttribute('data-preset-topic');
     Pdfs._pendingUpload = { filename: file.name, buf, pageCount };
+    const presetTopic = presetTopicId ? (Cache.topics || []).find(t => t.id === presetTopicId) : null;
+    const presetChapter = presetTopic ? (Cache.chapters || []).find(c => c.id === presetTopic.chapterId) : null;
     Modal.open('Import PDF', `
       <label>Title</label><input type="text" id="mPdfTitle" value="${esc(file.name.replace(/\.pdf$/i, ''))}" title="Title for this PDF in your library">
       <label>Subject (optional — powers related-content links)</label>
-      <select id="mPdfSubject" title="Tag this PDF with a subject to power related-content links"><option value="">— None —</option>${subjectOptions()}</select>
+      <select id="mPdfSubject" onchange="Pdfs.onUploadSubjectChange()" title="Tag this PDF with a subject to power related-content links"><option value="">— None —</option>${subjectOptions(presetChapter?.subjectId)}</select>
+      <label>Chapter (optional)</label>
+      <select id="mPdfChapter" onchange="Pdfs.onUploadChapterChange()" title="Optionally narrow this down to a specific chapter"><option value="">— None —</option>${chapterOptions(presetChapter?.id)}</select>
+      <label>Topic (optional — shows this PDF right inside that topic)</label>
+      <select id="mPdfTopic" title="Optionally tie this PDF to one specific topic, so it appears right there when you're studying it"><option value="">— None —</option>${topicOptions(presetTopicId)}</select>
       <div class="modal-actions"><button class="btn secondary" onclick="Modal.close()" title="Discard and close this dialog">Cancel</button>
       <button class="btn" onclick="Pdfs.finishUpload()" title="Save this PDF to your library">Import</button></div>`);
+  },
+  onUploadSubjectChange() {
+    const subjectId = document.getElementById('mPdfSubject').value;
+    document.getElementById('mPdfChapter').innerHTML = '<option value="">— None —</option>' + (Cache.chapters || []).filter(c => !subjectId || c.subjectId === subjectId).map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+    document.getElementById('mPdfTopic').innerHTML = '<option value="">— None —</option>' + topicOptions();
+  },
+  onUploadChapterChange() {
+    const chapterId = document.getElementById('mPdfChapter').value;
+    document.getElementById('mPdfTopic').innerHTML = '<option value="">— None —</option>' + (Cache.topics || []).filter(t => !chapterId || t.chapterId === chapterId).map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('');
+  },
+  promptUploadForTopic(topicId) {
+    const input = document.getElementById('pdfFileInput');
+    input.dataset.presetTopic = topicId;
+    input.click();
   },
   async finishUpload() {
     const p = Pdfs._pendingUpload; if (!p) return;
     const title = document.getElementById('mPdfTitle').value.trim() || p.filename;
     const subjectId = document.getElementById('mPdfSubject').value;
-    await saveItem('pdfs', { id: uid(), filename: p.filename, title, subjectId, pageCount: p.pageCount, blob: p.buf, createdAt: nowISO() });
+    const chapterId = document.getElementById('mPdfChapter').value;
+    const topicId = document.getElementById('mPdfTopic').value;
+    await saveItem('pdfs', { id: uid(), filename: p.filename, title, subjectId, chapterId, topicId, pageCount: p.pageCount, blob: p.buf, createdAt: nowISO() });
     Pdfs._pendingUpload = null;
     Modal.close(); toast('PDF imported'); Router.render();
   },
@@ -1363,8 +1398,7 @@ const Pdfs = {
     const items = Cache.pdfs || [];
     return `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
       <h2 style="margin:0;">PDF Library</h2>
-      <div><input type="file" id="pdfFileInput" accept="application/pdf" style="display:none" onchange="Pdfs.handleFile(this)">
-      <button class="btn" onclick="Pdfs.upload()" title="Choose a PDF file to upload">+ Import PDF</button></div></div>
+      <div><button class="btn" onclick="Pdfs.upload()" title="Choose a PDF file to upload">+ Import PDF</button></div></div>
       ${items.length ? `<div class="grid cols-3">${items.map(p => `
       <div class="card" style="cursor:pointer;" onclick="UI.nav('pdf',{id:'${p.id}'})" title="Open this PDF">
         <div style="font-size:32px;">📄</div><b>${esc(p.title)}</b>
@@ -1379,8 +1413,22 @@ const Pdfs = {
     pdfSplitMode = false; pdfSplitNoteId = null; pdfDrawMode = false; pdfDrawTool = 'pen'; pdfDrawColor = '#202A22';
     pdfUndoStack = []; pdfRedoStack = [];
     const drawColors = ['#202A22', '#A23B2E', '#A9822E', '#2f6fc9', '#3f8a53'];
+    const crumb = rec.subjectId
+      ? `<div class="hub-crumb subtle" style="margin-bottom:6px;">
+          <span class="hub-crumb-item" onclick="SubjectsHub.view='overview';SubjectsHub.subjectId=null;UI.nav('subjects');" title="Back to Subjects">Subjects</span>
+          <span class="hub-crumb-sep">›</span>
+          <span class="hub-crumb-item" onclick="SubjectsHub.view='subject';SubjectsHub.subjectId='${rec.subjectId}';UI.nav('subjects');" title="Back to ${esc(subjectName(rec.subjectId))}">${esc(subjectName(rec.subjectId))}</span>
+          <span class="hub-crumb-sep">›</span>
+          <span class="hub-crumb-item current">${esc(rec.title)}</span>
+        </div>`
+      : `<div class="hub-crumb subtle" style="margin-bottom:6px;">
+          <span class="hub-crumb-item" onclick="UI.nav('pdfs')" title="Back to PDF Library">PDF Library</span>
+          <span class="hub-crumb-sep">›</span>
+          <span class="hub-crumb-item current">${esc(rec.title)}</span>
+        </div>`;
     return `
-    <div class="pdf-shell">
+    ${crumb}
+    <div class="pdf-shell" style="height:calc(100vh - 78px);">
       <div class="pdf-toolbar">
         <b>${esc(rec.title)}</b>
         <div class="spacer"></div>
@@ -1946,7 +1994,7 @@ const Pdfs = {
 const Commands = [
   { label: 'New Note', icon: '📝', kind: 'Create', run: () => { CmdK.close(); Notes.promptNew(); } },
   { label: 'New Course', icon: '📚', kind: 'Create', run: () => { CmdK.close(); Courses.promptNew(); } },
-  { label: 'Import PDF', icon: '📄', kind: 'Create', run: () => { CmdK.close(); UI.nav('pdfs'); setTimeout(() => Pdfs.upload(), 250); } },
+  { label: 'Import PDF', icon: '📄', kind: 'Create', run: () => { CmdK.close(); Pdfs.upload(); } },
   { label: 'Add Mnemonic', icon: '🧠', kind: 'Create', run: () => { CmdK.close(); Mnemonics.promptNew(); } },
   { label: 'Add Jargon', icon: '🔤', kind: 'Create', run: () => { CmdK.close(); Jargons.promptNew(); } },
   { label: 'Add Question', icon: '❓', kind: 'Create', run: () => { CmdK.close(); Questions.promptNew(); } },
@@ -3020,8 +3068,9 @@ function TopicView(id) {
   const notes = (Cache.notes || []).filter(n => n.topicId === id).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   const mnemonics = (Cache.mnemonics || []).filter(m => m.topicId === id);
   const questions = (Cache.questions || []).filter(q => q.topicId === id);
+  const topicPdfs = (Cache.pdfs || []).filter(p => p.topicId === id);
   const relatedJargons = (Cache.jargons || []).filter(j => chapter && j.subjectId === chapter.subjectId);
-  const relatedPdfs = (Cache.pdfs || []).filter(p => chapter && p.subjectId === chapter.subjectId);
+  const relatedPdfs = (Cache.pdfs || []).filter(p => chapter && p.subjectId === chapter.subjectId && p.topicId !== id);
   return `
   <div class="subtle hub-crumb" style="margin-bottom:2px;">
     <span class="hub-crumb-item" onclick="SubjectsHub.view='overview';SubjectsHub.subjectId=null;UI.nav('subjects');" title="Back to Subjects">Subjects</span>
@@ -3036,6 +3085,7 @@ function TopicView(id) {
   </div>
   <div class="note-meta-row" style="margin-bottom:16px;">
     <button class="btn sm" onclick="Notes.promptNew('${id}')" title="Create a note in this topic">+ Note</button>
+    <button class="btn sm secondary" onclick="Pdfs.promptUploadForTopic('${id}')" title="Upload a PDF and tie it directly to this topic">+ Import PDF</button>
     <button class="btn sm secondary" onclick="Mnemonics.promptNew('${id}')" title="Create a mnemonic linked to this topic">+ Mnemonic</button>
     <button class="btn sm secondary" onclick="Questions.promptNew('${id}')" title="Add a question linked to this topic">+ Question</button>
   </div>
@@ -3044,11 +3094,13 @@ function TopicView(id) {
       ondragstart="Tree.dragStart(event,'note','${n.id}')" ondragover="Tree.allowDrop(event)"
       ondrop="Tree.onDrop(event,'note','notes','topicId','${id}','${n.id}')"
       onclick="UI.nav('note',{id:'${n.id}'})" title="Open this note"><span>📝</span><div style="flex:1;">${esc(n.title)}</div></div>`).join('') : `<div class="subtle">No notes yet.</div>`}
+  <h3 style="margin-top:18px;">PDFs</h3>
+  ${topicPdfs.length ? topicPdfs.map(p => `<div class="list-row" onclick="UI.nav('pdf',{id:'${p.id}'})" title="Open this PDF"><span>📄</span><div style="flex:1;">${esc(p.title)}${p.pageCount ? `<div class="subtle">${p.pageCount} page${p.pageCount === 1 ? '' : 's'}</div>` : ''}</div></div>`).join('') : `<div class="subtle">None yet — click "+ Import PDF" above to add one right here.</div>`}
   <h3 style="margin-top:18px;">Mnemonics</h3>
   ${mnemonics.length ? mnemonics.map(m => `<div class="card" style="margin-bottom:8px;"><b>${esc(m.title)}</b> — <span class="pill">${esc(m.mnemonicText)}</span></div>`).join('') : `<div class="subtle">None yet.</div>`}
   <h3 style="margin-top:18px;">Questions</h3>
   ${questions.length ? questions.map(q => `<div class="subtle" style="margin-bottom:6px;">❓ ${esc(q.questionText)}</div>`).join('') : `<div class="subtle">None yet.</div>`}
-  ${(relatedJargons.length || relatedPdfs.length) ? `<h3 style="margin-top:18px;">Related (same subject)</h3>
+  ${(relatedJargons.length || relatedPdfs.length) ? `<h3 style="margin-top:18px;">Related (same subject, other topics)</h3>
   ${relatedJargons.map(j => `<div class="subtle" style="cursor:pointer;" onclick="UI.nav('jargons')" title="Open Jargons">🔤 ${esc(j.term)}</div>`).join('')}
   ${relatedPdfs.map(p => `<div class="subtle" style="cursor:pointer;" onclick="UI.nav('pdf',{id:'${p.id}'})" title="Open this PDF">📄 ${esc(p.title)}</div>`).join('')}` : ''}
   `;

@@ -51,8 +51,8 @@ button{font-family:inherit;cursor:pointer;}
 .nav-item:hover{background:var(--bg-elev-2);color:var(--text);}
 .nav-item.active{background:var(--accent-soft);color:var(--accent);font-weight:700;box-shadow:var(--glow);}
 .nav-item .badge{margin-left:auto;background:var(--accent);color:var(--ink-on-accent);font-family:var(--mono);font-size:11px;font-weight:700;padding:1px 7px;border-radius:10px;}
-.nav-item-featured{background:linear-gradient(90deg,var(--accent-soft),transparent);color:var(--accent);font-weight:700;margin-bottom:6px;border:1px solid rgba(217,178,76,.25);}
-.nav-item-featured:hover{background:linear-gradient(90deg,var(--accent-soft),rgba(217,178,76,.06));color:var(--accent);}
+.nav-item-featured{font-weight:700;margin-bottom:6px;border-left:2px solid rgba(217,178,76,.4);}
+.nav-item-featured:not(.active):hover{border-left-color:var(--accent);}
 .nav-item-featured.active{box-shadow:var(--glow);}
 .tree{padding-left:2px;}
 .del-mini{opacity:.4;font-size:12px;color:var(--text-dim);padding:2px 5px;border-radius:5px;transition:opacity .12s ease;}
@@ -93,12 +93,12 @@ button{font-family:inherit;cursor:pointer;}
 .list-row:hover{background:var(--bg-elev-2);}
 
 /* SUBJECTS HUB */
-.subject-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;}
-.subject-card{position:relative;background:var(--bg-elev);border:1px solid var(--border);border-top:3px solid var(--accent);border-radius:14px;padding:18px;cursor:pointer;box-shadow:var(--shadow-card);transition:transform .12s ease,box-shadow .12s ease;}
+.subject-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;}
+.subject-card{position:relative;border:1px solid var(--border);border-radius:14px;padding:20px;cursor:pointer;box-shadow:var(--shadow-card);transition:transform .12s ease,box-shadow .12s ease;}
 .subject-card:hover{transform:translateY(-3px);box-shadow:0 6px 22px rgba(0,0,0,.35);}
-.subject-card-name{font-family:var(--serif);font-size:17px;font-weight:600;line-height:1.3;padding-right:6px;}
-.subject-card-stats{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px;font-size:12px;color:var(--text-dim);}
-.subject-hero{display:flex;justify-content:space-between;align-items:center;gap:24px;background:var(--bg-elev);border:1px solid var(--border);border-top:3px solid var(--accent);border-radius:16px;padding:26px 30px;box-shadow:var(--shadow-card);flex-wrap:wrap;}
+.subject-card-name{font-family:var(--serif);font-size:18px;font-weight:600;line-height:1.3;padding-right:6px;}
+.subject-card-stats{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px;font-size:12px;color:var(--text-dim);}
+.subject-hero{display:flex;justify-content:space-between;align-items:center;gap:24px;border:1px solid var(--border);border-radius:16px;padding:26px 30px;box-shadow:var(--shadow-card);flex-wrap:wrap;}
 .hub-crumb{display:flex;align-items:center;gap:6px;font-size:13px;flex-wrap:wrap;}
 .hub-crumb-item{cursor:pointer;color:var(--text-dim);}
 .hub-crumb-item:hover{color:var(--accent);text-decoration:underline;}
@@ -318,6 +318,7 @@ body.focus-mode .content { max-width: 780px; margin: 0 auto; padding-top: 50px; 
 </nav>
 
 <input type="file" id="noteImportInput" accept=".txt,.md,.markdown,.html,.htm" style="display:none" onchange="Notes.handleImportFile(this)">
+<input type="file" id="pdfFileInput" accept="application/pdf" style="display:none" onchange="Pdfs.handleFile(this)">
 <div class="toast-wrap" id="toastWrap"></div>
 
 <script src="app.js"></script>

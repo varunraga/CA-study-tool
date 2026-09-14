@@ -29,11 +29,11 @@ Example: `CA Intermediate → GST → Input Tax Credit → Section 16 — Eligib
 
 **This is the heart of the app**, so it gets its own dedicated page — **sidebar → 📚 Subjects** (also reachable via the "Browse" button on mobile). It's a visual drill-down, not a nested list:
 
-1. **Overview**: your courses, each showing its subjects as a card grid. Click **"+ Course"** (top right) to add a course; click **"+ Subject"** under a course to add one. Every subject gets an in-app modal to name it and — new — **pick a color** from an 8-swatch palette. That color follows the subject everywhere: its card border, its progress ring, its detail page.
-2. Each subject card shows a live **progress ring** (% of its notes marked "mastered") plus quick counts (chapters, topics, notes). **Click a card** to open that subject.
+1. **Overview**: your courses, each showing its subjects as a full-width card grid — a single subject spans the whole row rather than sitting in a small box. Click **"+ Course"** (top right) to add a course; click **"+ Subject"** under a course to add one. Every subject gets an in-app modal to name it and **pick a color** from an 8-swatch palette. That color follows the subject everywhere as a subtle full-card tint (not just a thin strip) — its card, its progress ring, its detail page.
+2. Each subject card shows a live **progress ring** (% of its notes marked "mastered") plus quick counts (chapters, topics, notes, and PDFs once you have any). **Click a card** to open that subject.
 3. **Subject page**: a bigger version of the same ring, full stats, and its list of chapters. **"+ Chapter"** adds one; **"🎨 Color"** lets you change the subject's color anytime.
-4. **Click a chapter** to see its topics (note/mnemonic/question counts per topic). **"+ Topic"** adds one.
-5. **Click a topic** to open it — that's where you'll add notes, mnemonics and questions for it (§9 below). Its breadcrumb at the top is clickable, so you can jump straight back to the subject or chapter without retracing your steps.
+4. **Click a chapter** to see its topics (note/mnemonic/question/PDF counts per topic). **"+ Topic"** adds one.
+5. **Click a topic** to open it — that's where you'll add notes, mnemonics, questions, **and now PDFs** for it (§9 below). Its breadcrumb at the top is clickable, so you can jump straight back to the subject or chapter without retracing your steps — and the same clickable breadcrumb now appears when you're inside an individual note or PDF too, so you're never more than one click from any level (topic, chapter, subject, or the Subjects hub itself).
 
 **Reordering**: click and drag any subject card, chapter row, topic row, or note (within its topic) to reorder it. It remembers the order permanently.
 
@@ -144,11 +144,11 @@ The **Revision** section (sidebar, with a badge showing how many are due) is whe
 
 ---
 
-## 10. The PDF Library
+## 10. PDFs — in your topics, and in the PDF Library
 
-**Upload a PDF**: sidebar → PDF Library → **"+ Import PDF"**. You'll be asked for a title and — optionally — a **subject**. Tagging it with a subject is worth doing: it's what powers "related content" links from your notes, and lets you use the "Split with Notes" feature (below) with a sensible note picker.
+**Two ways to upload**: click **"+ Import PDF"** either from **sidebar → PDF Library**, or — new — right from inside a **Topic page** (§2 above), which pre-fills that topic (and its chapter and subject) for you. Either way, you'll be asked for a title and, optionally, a **subject → chapter → topic** (each dropdown narrows the next one down). Tagging it all the way to a topic means the PDF shows up right there on that topic's page, alongside its notes — not just in the separate library. Tagging is optional at every level; an untagged PDF just lives in the library.
 
-**Reading**: click any PDF to open the viewer. Prev/Next page, zoom in/out (−/+), and the page counter are in the toolbar.
+**Reading**: click any PDF (from its topic, or from the Library) to open the viewer. Prev/Next page, zoom in/out (−/+), and the page counter are in the toolbar. A breadcrumb at the top lets you jump straight back to its subject.
 
 **Highlighting text on a PDF**: select text on the page exactly like you would in a note — a floating toolbar appears with the 6 highlight colors plus an underline option. These are stored as a separate layer keyed to the page, so **your original PDF file is never modified**, and the highlight re-scales correctly no matter what zoom level you're at. A **highlight legend** at the top of the right-hand panel always shows what each color means — the same legend used in notes.
 
