@@ -1360,6 +1360,7 @@ const Bookmarks = {
 /* ============================== PDF LIBRARY ============================== */
 let pdfDocCache = null, pdfCurrentPage = 1, pdfScale = 1.2, pdfPageObj = null, pdfStickyMode = false, pdfSplitMode = false, pdfSplitNoteId = null;
 let pdfDrawMode = false, pdfDrawTool = 'pen', pdfDrawColor = '#202A22', pdfDrawing = false, pdfDrawStart = null, pdfCurrentStroke = [];
+let pdfReadMode = false; // minimal whole-screen reading view — no right panel, stripped-down toolbar
 let pdfUndoStack = [], pdfRedoStack = []; // unified undo/redo across highlights, underlines, sticky notes and drawings for the current PDF
 
 /* Minimal selectable text layer, built the same way pdf.js's own viewer does:
@@ -1455,6 +1456,7 @@ const Pdfs = {
     if (!rec) return `<div class="empty-state"><h3>PDF not found</h3></div>`;
     setTimeout(() => Pdfs.load(rec), 30);
     pdfSplitMode = false; pdfSplitNoteId = null; pdfDrawMode = false; pdfDrawTool = 'pen'; pdfDrawColor = '#202A22';
+    pdfReadMode = false;
     pdfUndoStack = []; pdfRedoStack = [];
     const drawColors = ['#202A22', '#A23B2E', '#A9822E', '#2f6fc9', '#3f8a53'];
     const crumbInner = rec.subjectId
@@ -1472,7 +1474,7 @@ const Pdfs = {
     </div>`;
     const shellHeight = (document.body.classList.contains('pdf-fullwidth') && !isMobileLayout()) ? 'calc(100vh - 4px)' : 'calc(100vh - 62px)';
     return `
-    <div class="pdf-shell" style="height:${shellHeight};">
+    <div class="pdf-shell${pdfReadMode ? ' pdf-readmode' : ''}" style="height:${shellHeight};">
       ${crumb}
       <div class="pdf-toolbar">
         <b>${esc(rec.title)}</b>
@@ -1482,13 +1484,14 @@ const Pdfs = {
         <button class="icon-btn" onclick="Pdfs.nextPage()" title="Next page">Next ›</button>
         <button class="icon-btn" onclick="Pdfs.zoom(-0.15)" title="Zoom out" aria-label="Zoom out">−</button>
         <button class="icon-btn" onclick="Pdfs.zoom(0.15)" title="Zoom in" aria-label="Zoom in">+</button>
-        <button class="icon-btn" id="pdfUndoBtn" onclick="Pdfs.undo()" title="Undo the last highlight, underline, sticky note or drawing" disabled>↶ Undo</button>
-        <button class="icon-btn" id="pdfRedoBtn" onclick="Pdfs.redo()" title="Redo" disabled>↷ Redo</button>
-        <button class="icon-btn" onclick="Pdfs.bookmarkPage('${id}')" title="Bookmark this page for quick return">🔖 Bookmark page</button>
-        <button class="icon-btn" id="stickyBtn" onclick="Pdfs.toggleStickyMode()" title="Click a spot on the page to drop a sticky note there">📌 Sticky note</button>
-        <button class="icon-btn" id="drawBtn" onclick="Pdfs.toggleDrawMode()" title="Draw freehand ink, an arrow, or a rectangle on this page">✏ Draw</button>
-        <button class="icon-btn" id="splitBtn" onclick="Pdfs.toggleSplit()" title="Dock a note editor beside the PDF, for taking notes while you read">📝 Split with Notes</button>
-        <button class="icon-btn" onclick="Pdfs.exportAnnotatedPdf()" title="Download a copy of this PDF with all highlights, underlines and drawings permanently burned in — the original stays untouched">⬇ Export PDF</button>
+        <button class="icon-btn" id="pdfReadModeBtn" onclick="Pdfs.toggleReadMode()" title="${pdfReadMode ? 'Exit whole-screen reading view and return to the full editor' : 'Switch to a distraction-free, whole-screen reading view with just the essentials'}">${pdfReadMode ? '⛶ Exit Full Screen' : '⛶ Full Screen'}</button>
+        <button class="icon-btn pdf-edit-only" id="pdfUndoBtn" onclick="Pdfs.undo()" title="Undo the last highlight, underline, sticky note or drawing" disabled>↶ Undo</button>
+        <button class="icon-btn pdf-edit-only" id="pdfRedoBtn" onclick="Pdfs.redo()" title="Redo" disabled>↷ Redo</button>
+        <button class="icon-btn pdf-edit-only" onclick="Pdfs.bookmarkPage('${id}')" title="Bookmark this page for quick return">🔖 Bookmark page</button>
+        <button class="icon-btn pdf-edit-only" id="stickyBtn" onclick="Pdfs.toggleStickyMode()" title="Click a spot on the page to drop a sticky note there">📌 Sticky note</button>
+        <button class="icon-btn pdf-edit-only" id="drawBtn" onclick="Pdfs.toggleDrawMode()" title="Draw freehand ink, an arrow, or a rectangle on this page">✏ Draw</button>
+        <button class="icon-btn pdf-edit-only" id="splitBtn" onclick="Pdfs.toggleSplit()" title="Dock a note editor beside the PDF, for taking notes while you read">📝 Split with Notes</button>
+        <button class="icon-btn pdf-edit-only" onclick="Pdfs.exportAnnotatedPdf()" title="Download a copy of this PDF with all highlights, underlines and drawings permanently burned in — the original stays untouched">⬇ Export PDF</button>
         <span class="subtle" style="font-size:11.5px;">Select text to highlight/underline</span>
       </div>
       <div class="pdf-draw-toolbar" id="pdfDrawToolbar" style="display:none;">
@@ -1518,6 +1521,21 @@ const Pdfs = {
         </div>
       </div>
     </div>`;
+  },
+  toggleReadMode() {
+    pdfReadMode = !pdfReadMode;
+    if (pdfReadMode) {
+      if (pdfDrawMode) Pdfs.toggleDrawMode();
+      if (pdfSplitMode) Pdfs.toggleSplit();
+      if (pdfStickyMode) Pdfs.toggleStickyMode();
+    }
+    const shell = document.querySelector('.pdf-shell');
+    if (shell) shell.classList.toggle('pdf-readmode', pdfReadMode);
+    const btn = document.getElementById('pdfReadModeBtn');
+    if (btn) {
+      btn.textContent = pdfReadMode ? '⛶ Exit Full Screen' : '⛶ Full Screen';
+      btn.title = pdfReadMode ? 'Exit whole-screen reading view and return to the full editor' : 'Switch to a distraction-free, whole-screen reading view with just the essentials';
+    }
   },
   toggleFullwidth() {
     const isFull = document.body.classList.toggle('pdf-fullwidth');

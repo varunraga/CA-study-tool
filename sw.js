@@ -6,7 +6,7 @@
 // always get the latest index.html/app.js straight away; the cache is
 // only a fallback for when you're offline. Bump CACHE_NAME whenever you
 // deploy a new version so old caches get cleared out automatically.
-const CACHE_NAME = 'castudy-cache-v15';
+const CACHE_NAME = 'castudy-cache-v16';
 const APP_SHELL = [
   './',
   './index.html',
