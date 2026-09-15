@@ -311,6 +311,7 @@ const UI = {
   params: {},
   nav(route, params = {}) {
     this.route = route; this.params = params;
+    document.body.classList.toggle('pdf-fullwidth', route === 'pdf');
     document.querySelectorAll('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.route === route));
     document.querySelectorAll('.bottom-nav button').forEach(n => n.classList.toggle('active', n.dataset.route === route));
     this.closeSidebar();
@@ -1427,22 +1428,22 @@ const Pdfs = {
     pdfSplitMode = false; pdfSplitNoteId = null; pdfDrawMode = false; pdfDrawTool = 'pen'; pdfDrawColor = '#202A22';
     pdfUndoStack = []; pdfRedoStack = [];
     const drawColors = ['#202A22', '#A23B2E', '#A9822E', '#2f6fc9', '#3f8a53'];
-    const crumb = rec.subjectId
-      ? `<div class="hub-crumb subtle" style="margin-bottom:6px;">
-          <span class="hub-crumb-item" onclick="SubjectsHub.view='overview';SubjectsHub.subjectId=null;UI.nav('subjects');" title="Back to Subjects">Subjects</span>
+    const crumbInner = rec.subjectId
+      ? `<span class="hub-crumb-item" onclick="SubjectsHub.view='overview';SubjectsHub.subjectId=null;UI.nav('subjects');" title="Back to Subjects">Subjects</span>
           <span class="hub-crumb-sep">›</span>
           <span class="hub-crumb-item" onclick="SubjectsHub.view='subject';SubjectsHub.subjectId='${rec.subjectId}';UI.nav('subjects');" title="Back to ${esc(subjectName(rec.subjectId))}">${esc(subjectName(rec.subjectId))}</span>
           <span class="hub-crumb-sep">›</span>
-          <span class="hub-crumb-item current">${esc(rec.title)}</span>
-        </div>`
-      : `<div class="hub-crumb subtle" style="margin-bottom:6px;">
-          <span class="hub-crumb-item" onclick="UI.nav('pdfs')" title="Back to PDF Library">PDF Library</span>
+          <span class="hub-crumb-item current">${esc(rec.title)}</span>`
+      : `<span class="hub-crumb-item" onclick="UI.nav('pdfs')" title="Back to PDF Library">PDF Library</span>
           <span class="hub-crumb-sep">›</span>
-          <span class="hub-crumb-item current">${esc(rec.title)}</span>
-        </div>`;
+          <span class="hub-crumb-item current">${esc(rec.title)}</span>`;
+    const crumb = `<div style="display:flex;align-items:center;padding:8px 14px 0;background:var(--bg-elev);">
+      <button class="pdf-sidebar-toggle" onclick="Pdfs.toggleFullwidth()" title="Show or hide the sidebar — PDFs open full-width by default for a broader reading view">☰</button>
+      <div class="hub-crumb subtle">${crumbInner}</div>
+    </div>`;
     return `
-    ${crumb}
-    <div class="pdf-shell" style="height:calc(100vh - 78px);">
+    <div class="pdf-shell" style="height:calc(100vh - 54px);">
+      ${crumb}
       <div class="pdf-toolbar">
         <b>${esc(rec.title)}</b>
         <div class="spacer"></div>
@@ -1476,6 +1477,7 @@ const Pdfs = {
             <canvas id="pdfCanvas"></canvas>
             <div class="pdf-textlayer" id="pdfTextLayer" onmouseup="Pdfs.onTextSelect(event)"></div>
             <div class="pdf-hl-overlay" id="pdfHlOverlay"></div>
+            <div class="pdf-selection-preview" id="pdfSelectionPreview"></div>
             <canvas class="pdf-ink-canvas" id="pdfInkCanvas"
               onpointerdown="Pdfs.inkPointerDown(event)" onpointermove="Pdfs.inkPointerMove(event)"
               onpointerup="Pdfs.inkPointerUp(event)" onpointerleave="Pdfs.inkPointerUp(event)"></canvas>
@@ -1487,6 +1489,7 @@ const Pdfs = {
       </div>
     </div>`;
   },
+  toggleFullwidth() { document.body.classList.toggle('pdf-fullwidth'); },
   async load(rec) {
     try {
       pdfDocCache = await pdfjsLib.getDocument({ data: rec.blob.slice(0) }).promise;
@@ -1528,10 +1531,11 @@ const Pdfs = {
     document.getElementById('pdfSelToolbar')?.remove();
     if (pdfStickyMode) return;
     const sel = window.getSelection();
-    if (!sel || sel.isCollapsed || !sel.toString().trim()) return;
+    if (!sel || sel.isCollapsed || !sel.toString().trim()) { Pdfs.clearSelectionPreview(); return; }
     const layer = document.getElementById('pdfTextLayer');
     if (!layer || !layer.contains(sel.anchorNode)) return;
     const range = sel.getRangeAt(0);
+    Pdfs.renderSelectionPreview(range);
     const rect = range.getBoundingClientRect();
     const colors = Settings.get('highlightColors');
     const bar = document.createElement('div');
@@ -1541,6 +1545,18 @@ const Pdfs = {
     bar.innerHTML = colors.map((c, i) => `<button title="${esc(c.label)}" onmousedown="event.preventDefault();Pdfs.saveHighlight('${c.color}','${c.key}')">${['🟡', '🟢', '🔵', '🔴', '🟣', '🟠'][i] || '●'}</button>`).join('')
       + `<button title="Underline" onmousedown="event.preventDefault();Pdfs.saveHighlight('','underline')">U̲</button>`;
     document.body.appendChild(bar);
+  },
+  renderSelectionPreview(range) {
+    const preview = document.getElementById('pdfSelectionPreview');
+    const wrap = document.getElementById('pdfPageWrap');
+    if (!preview || !wrap) return;
+    const wrapRect = wrap.getBoundingClientRect();
+    const merged = mergeLineRectsDOM(getRangeWordRects(range));
+    preview.innerHTML = merged.map(r => `<div style="left:${r.left - wrapRect.left}px;top:${r.top - wrapRect.top}px;width:${r.width}px;height:${r.height}px;"></div>`).join('');
+  },
+  clearSelectionPreview() {
+    const preview = document.getElementById('pdfSelectionPreview');
+    if (preview) preview.innerHTML = '';
   },
   async saveHighlight(color, kind) {
     const sel = window.getSelection();
@@ -1556,6 +1572,7 @@ const Pdfs = {
     }));
     sel.removeAllRanges();
     document.getElementById('pdfSelToolbar')?.remove();
+    Pdfs.clearSelectionPreview();
     if (!rects.length) return;
     const saved = await saveItem('annotations', {
       id: uid(), targetType: 'pdf', pdfId: UI.params.id, page: pdfCurrentPage,
@@ -1879,6 +1896,17 @@ const Pdfs = {
     Modal.close();
     Pdfs.refreshOverlayAndPanel();
   },
+  async quickDeleteAnnotation(id) {
+    const a = Cache.annotations.find(x => x.id === id); if (!a) return;
+    const kindLabel = ['ink', 'arrow', 'rect'].includes(a.kind) ? 'drawing' : a.kind === 'sticky' ? 'sticky note' : a.kind;
+    if (!confirm(`Delete this ${kindLabel}?`)) return;
+    await DB.del('annotations', id);
+    Cache.annotations = Cache.annotations.filter(x => x.id !== id);
+    Pdfs.pushUndo({ type: 'delete', data: a });
+    Modal.close();
+    Pdfs.refreshOverlayAndPanel();
+    Pdfs.redrawInkCanvas();
+  },
 
   /* ---- overlay + side panel rendering ---- */
   refreshOverlayAndPanel() {
@@ -1935,8 +1963,11 @@ const Pdfs = {
       const isDrawing = ['ink', 'arrow', 'rect'].includes(a.kind);
       const icon = a.kind === 'sticky' ? '📝' : a.kind === 'underline' ? '‾' : a.kind === 'ink' ? '✏' : a.kind === 'arrow' ? '↗' : a.kind === 'rect' ? '▭' : '🖍';
       const label = isDrawing ? (a.kind.charAt(0).toUpperCase() + a.kind.slice(1) + ' drawing') : (a.comment || a.text || '');
-      const handler = a.kind === 'sticky' ? `Pdfs.openSticky('${a.id}')` : isDrawing ? `Pdfs.deleteDrawing('${a.id}')` : `Pdfs.openHighlight('${a.id}')`;
-      return `<div class="subtle" style="cursor:pointer;padding:4px 0;" title="${isDrawing ? 'Click to delete' : 'Click to view, edit or delete'}" onclick="${handler}">${icon} ${esc(label.slice(0, 42))}</div>`;
+      const openHandler = a.kind === 'sticky' ? `Pdfs.openSticky('${a.id}')` : isDrawing ? '' : `Pdfs.openHighlight('${a.id}')`;
+      return `<div style="display:flex;align-items:center;gap:4px;">
+        <span class="subtle" style="flex:1;padding:4px 0;${openHandler ? 'cursor:pointer;' : ''}" ${openHandler ? `onclick="${openHandler}" title="Click to view, edit, or delete"` : ''}>${icon} ${esc(label.slice(0, 42))}</span>
+        <span class="del-mini" onclick="Pdfs.quickDeleteAnnotation('${a.id}')" title="Delete this ${isDrawing ? 'drawing' : a.kind === 'sticky' ? 'sticky note' : a.kind}">✕</span>
+      </div>`;
     }).join('') : '<div class="subtle">None on this page yet.</div>'}
       <h4 style="font-size:12px;text-transform:uppercase;color:var(--text-dim);margin-top:14px;">Bookmarked pages</h4>
       ${bookmarks.length ? bookmarks.map(b => `<div class="subtle" style="cursor:pointer;padding:4px 0;" onclick="Pdfs.goToPage(${b.page})" title="Jump to this page">📍 Page ${b.page} ${b.label ? '— ' + esc(b.label) : ''}</div>`).join('') : '<div class="subtle">None yet.</div>'}
@@ -2558,13 +2589,13 @@ const BackupService = {
     data._exportedAt = nowISO();
     return data;
   },
-  async mergeBackupObject(data) {
+  async mergeBackupObject(data, silent) {
     for (const s of STORES) {
       if (s === 'pdfs' || s === 'noteVersions' || !data[s]) continue;
       for (const obj of data[s]) await DB.put(s, obj);
     }
     await loadAllToCache();
-    Tree.render(); Router.render();
+    if (!silent) { Tree.render(); Router.render(); }
   },
   async exportJSON() {
     const data = this.buildBackupObject();
@@ -2757,7 +2788,7 @@ const DriveSync = {
     this.lastSyncError = null;
     Settings.set('googleWasConnected', true);
     this.updateStatusBadge();
-    this.ensureFileId().then(() => this.syncNow(true)).then(() => Router.render());
+    this.ensureFileId().then(() => this.syncNow(true)).then(() => { if (UI.route === 'settings') Router.render(); });
   },
   async ensureValidToken() {
     if (this.accessToken && Date.now() < this.tokenExpiresAt - 60000) return true;
@@ -2856,7 +2887,7 @@ const DriveSync = {
       try {
         const res = await this.driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`);
         const remote = await res.json();
-        if (remote && typeof remote === 'object') await BackupService.mergeBackupObject(remote);
+        if (remote && typeof remote === 'object') await BackupService.mergeBackupObject(remote, true);
       } catch (mergeErr) {
         console.warn('Pre-sync merge skipped (remote file may be empty or new)', mergeErr);
       }
@@ -3217,6 +3248,17 @@ const Focus = {
 };
 
 /* ============================== KEYBOARD SHORTCUTS ============================== */
+/* Keeps the PDF selection preview in sync WHILE dragging (selectionchange
+   fires continuously during a drag, not just once on mouseup), so the clean
+   merged-word preview tracks the selection live rather than only appearing
+   after you let go of the mouse. Cheap no-op outside the PDF viewer. */
+document.addEventListener('selectionchange', () => {
+  const layer = document.getElementById('pdfTextLayer');
+  if (!layer) return;
+  const sel = window.getSelection();
+  if (!sel || sel.isCollapsed || !sel.rangeCount || !layer.contains(sel.anchorNode)) { Pdfs.clearSelectionPreview(); return; }
+  requestAnimationFrame(() => Pdfs.renderSelectionPreview(sel.getRangeAt(0)));
+});
 document.addEventListener('keydown', (e) => {
   const mod = e.metaKey || e.ctrlKey;
   if (mod && e.key.toLowerCase() === 'k') { e.preventDefault(); CmdK.open(); }

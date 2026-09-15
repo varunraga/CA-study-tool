@@ -40,7 +40,10 @@ button{font-family:inherit;cursor:pointer;}
 .app{display:flex;height:100vh;overflow:hidden;}
 
 /* SIDEBAR — a refined private-study rail */
-.sidebar{width:256px;flex-shrink:0;background:var(--bg-elev);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow-y:auto;position:relative;}
+.sidebar{width:256px;flex-shrink:0;background:var(--bg-elev);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow-y:auto;position:relative;transition:width .16s ease;}
+body.pdf-fullwidth .sidebar{width:0;min-width:0;border-right:none;overflow:hidden;}
+.pdf-sidebar-toggle{background:var(--bg-elev-2);border:1px solid var(--border);border-radius:8px;padding:6px 9px;color:var(--text-dim);font-size:13px;margin-right:8px;flex-shrink:0;}
+.pdf-sidebar-toggle:hover{color:var(--text);border-color:var(--accent);}
 .sidebar-header{padding:22px 18px 16px;display:flex;align-items:center;gap:11px;border-bottom:1px solid var(--border);margin-bottom:6px;}
 .sidebar-seal{width:38px;height:38px;border-radius:11px;flex-shrink:0;object-fit:contain;box-shadow:var(--glow);}
 .sidebar-wordmark{font-family:var(--serif);font-size:17.5px;font-weight:600;line-height:1.2;}
@@ -184,7 +187,9 @@ textarea{resize:vertical;}
 .pdf-page-wrap canvas{box-shadow:0 4px 18px rgba(0,0,0,.4);background:#fff;display:block;}
 .pdf-textlayer{position:absolute;top:0;left:0;overflow:hidden;line-height:1;}
 .pdf-textlayer span{position:absolute;white-space:pre;color:transparent;transform-origin:0 0;cursor:text;}
-.pdf-textlayer span::selection{background:#D9B24C77;}
+.pdf-textlayer span::selection{background:transparent;}
+.pdf-selection-preview{position:absolute;top:0;left:0;pointer-events:none;}
+.pdf-selection-preview div{position:absolute;background:var(--accent);opacity:.32;border-radius:2px;}
 .pdf-hl-overlay{position:absolute;top:0;left:0;pointer-events:none;}
 .pdf-hl-rect{position:absolute;pointer-events:auto;cursor:pointer;border-radius:2px;mix-blend-mode:multiply;}
 .pdf-hl-rect.underline{background:none !important;border-bottom:3px solid var(--accent);border-radius:0;}
@@ -206,7 +211,7 @@ textarea{resize:vertical;}
 .bottom-nav{display:none;}
 @media (max-width:700px), (max-width:1024px) and (max-height:500px){
   .sidebar{position:fixed;left:0;top:0;bottom:0;z-index:60;transform:translateX(-100%);transition:.2s;}
-  .sidebar.open{transform:translateX(0);box-shadow:0 0 30px rgba(0,0,0,.4);}
+  .sidebar.open{transform:translateX(0);box-shadow:0 0 30px rgba(0,0,0,.4);width:256px !important;}
   .content{padding:16px;padding-bottom:80px;}
   .grid.cols-3,.grid.cols-2{grid-template-columns:1fr;}
   .two-col{grid-template-columns:1fr;}
@@ -216,6 +221,7 @@ textarea{resize:vertical;}
   .bottom-nav .bn-icon{font-size:18px;}
   .topbar .search-top{display:none;}
   #driveStatusBadge{display:none !important;} /* still reachable via Settings; the topbar is too narrow for it here */
+  .pdf-sidebar-toggle{display:none;} /* mobile already has the hamburger menu for this */
   .pdf-shell{overflow-y:auto;}
   .pdf-body-row{flex-direction:column;overflow:visible;}
   .pdf-canvas-wrap{flex:none;min-height:50vh;}
