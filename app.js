@@ -64,12 +64,41 @@ function richTextExtrasHTML() {
    readers avoid this by snapping to whole words: this finds every word-span
    in the text layer the Range at least partially touches, and uses each
    span's own full bounding rect instead of the Range's raw fragment rects. */
+/* Selecting text that crosses multiple lines can produce a Range whose exact
+   pixel boundary lands mid-glyph on the first/last word — getClientRects()
+   then returns a sliver rect for that fragment, so the highlight visibly
+   stops just short of the true word edge. The fix is to snap the Range's
+   start/end outward to the nearest word boundary (whitespace) — but only
+   within their OWN text node, never jumping to a sibling span's content.
+   (An earlier version snapped to the whole containing SPAN instead, which
+   badly over-selects on PDFs whose text layer groups more than one word —
+   sometimes a whole justified line — into a single span: selecting 3 words
+   would highlight the entire line. Word-boundary snapping fixes the
+   original mid-glyph sliver without that regression.) */
+function snapRangeToWordBoundaries(range) {
+  const snapped = range.cloneRange();
+  if (snapped.startContainer.nodeType === Node.TEXT_NODE) {
+    const t = snapped.startContainer.textContent || '';
+    let so = snapped.startOffset;
+    while (so > 0 && !/\s/.test(t[so - 1])) so--;
+    snapped.setStart(snapped.startContainer, so);
+  }
+  if (snapped.endContainer.nodeType === Node.TEXT_NODE) {
+    const t = snapped.endContainer.textContent || '';
+    let eo = snapped.endOffset;
+    while (eo < t.length && !/\s/.test(t[eo])) eo++;
+    snapped.setEnd(snapped.endContainer, eo);
+  }
+  return snapped;
+}
 function getRangeWordRects(range) {
-  const layer = document.getElementById('pdfTextLayer');
-  if (!layer) return Array.from(range.getClientRects());
-  const spans = Array.from(layer.querySelectorAll('span'));
-  const rects = spans.filter(span => span.firstChild && range.intersectsNode(span)).map(span => span.getBoundingClientRect());
-  return rects.length ? rects : Array.from(range.getClientRects());
+  try {
+    const snapped = snapRangeToWordBoundaries(range);
+    const rects = Array.from(snapped.getClientRects());
+    return rects.length ? rects : Array.from(range.getClientRects());
+  } catch (e) {
+    return Array.from(range.getClientRects());
+  }
 }
 /* PDF text is made of individually-positioned per-word/per-fragment spans
    (that's just how PDF text extraction works), so a raw selection's
@@ -1441,8 +1470,9 @@ const Pdfs = {
       <button class="pdf-sidebar-toggle" onclick="Pdfs.toggleFullwidth()" title="Show or hide the sidebar — PDFs open full-width by default for a broader reading view">☰</button>
       <div class="hub-crumb subtle">${crumbInner}</div>
     </div>`;
+    const shellHeight = (document.body.classList.contains('pdf-fullwidth') && !isMobileLayout()) ? 'calc(100vh - 4px)' : 'calc(100vh - 62px)';
     return `
-    <div class="pdf-shell" style="height:calc(100vh - 54px);">
+    <div class="pdf-shell" style="height:${shellHeight};">
       ${crumb}
       <div class="pdf-toolbar">
         <b>${esc(rec.title)}</b>
@@ -1489,7 +1519,11 @@ const Pdfs = {
       </div>
     </div>`;
   },
-  toggleFullwidth() { document.body.classList.toggle('pdf-fullwidth'); },
+  toggleFullwidth() {
+    const isFull = document.body.classList.toggle('pdf-fullwidth');
+    const shell = document.querySelector('.pdf-shell');
+    if (shell) shell.style.height = (isFull && !isMobileLayout()) ? 'calc(100vh - 4px)' : 'calc(100vh - 62px)';
+  },
   async load(rec) {
     try {
       pdfDocCache = await pdfjsLib.getDocument({ data: rec.blob.slice(0) }).promise;
@@ -1559,29 +1593,46 @@ const Pdfs = {
     if (preview) preview.innerHTML = '';
   },
   async saveHighlight(color, kind) {
-    const sel = window.getSelection();
-    if (!sel.rangeCount) return;
-    const range = sel.getRangeAt(0);
-    const text = sel.toString();
-    const wrap = document.getElementById('pdfPageWrap');
-    const wrapRect = wrap.getBoundingClientRect();
-    const merged = mergeLineRectsDOM(getRangeWordRects(range));
-    const rects = merged.map(r => ({
-      x: (r.left - wrapRect.left) / pdfScale, y: (r.top - wrapRect.top) / pdfScale,
-      w: r.width / pdfScale, h: r.height / pdfScale
-    }));
-    sel.removeAllRanges();
-    document.getElementById('pdfSelToolbar')?.remove();
-    Pdfs.clearSelectionPreview();
-    if (!rects.length) return;
-    const saved = await saveItem('annotations', {
-      id: uid(), targetType: 'pdf', pdfId: UI.params.id, page: pdfCurrentPage,
-      kind: kind === 'underline' ? 'underline' : 'highlight', color: kind === 'underline' ? '' : color,
-      rects, text: text.slice(0, 140), comment: '', createdAt: nowISO()
-    });
-    Pdfs.pushUndo({ type: 'create', data: saved });
-    Pdfs.refreshOverlayAndPanel();
-    toast(kind === 'underline' ? 'Underlined' : 'Highlighted');
+    if (Pdfs._savingHighlight) return; // re-entrancy guard
+    Pdfs._savingHighlight = true;
+    try {
+      const sel = window.getSelection();
+      if (!sel.rangeCount) return;
+      const range = sel.getRangeAt(0);
+      const text = sel.toString();
+      const wrap = document.getElementById('pdfPageWrap');
+      const wrapRect = wrap.getBoundingClientRect();
+      const merged = mergeLineRectsDOM(getRangeWordRects(range));
+      const rects = merged.map(r => ({
+        x: (r.left - wrapRect.left) / pdfScale, y: (r.top - wrapRect.top) / pdfScale,
+        w: r.width / pdfScale, h: r.height / pdfScale
+      }));
+      sel.removeAllRanges();
+      document.getElementById('pdfSelToolbar')?.remove();
+      Pdfs.clearSelectionPreview();
+      if (!rects.length) return;
+      const targetKind = kind === 'underline' ? 'underline' : 'highlight';
+      const targetColor = kind === 'underline' ? '' : color;
+      // Duplicate guard: if an essentially identical annotation already
+      // exists on this page (same kind/color/text, near-identical position),
+      // don't stack another one on top of it.
+      const isDuplicate = (Cache.annotations || []).some(a =>
+        a.targetType === 'pdf' && a.pdfId === UI.params.id && a.page === pdfCurrentPage &&
+        a.kind === targetKind && a.color === targetColor && a.text === text.slice(0, 140) &&
+        a.rects && a.rects.length === rects.length &&
+        a.rects.every((r, i) => Math.abs(r.x - rects[i].x) < 2 && Math.abs(r.y - rects[i].y) < 2 && Math.abs(r.w - rects[i].w) < 2)
+      );
+      if (isDuplicate) { toast('Already highlighted'); return; }
+      const saved = await saveItem('annotations', {
+        id: uid(), targetType: 'pdf', pdfId: UI.params.id, page: pdfCurrentPage,
+        kind: targetKind, color: targetColor, rects, text: text.slice(0, 140), comment: '', createdAt: nowISO()
+      });
+      Pdfs.pushUndo({ type: 'create', data: saved });
+      Pdfs.refreshOverlayAndPanel();
+      toast(kind === 'underline' ? 'Underlined' : 'Highlighted');
+    } finally {
+      Pdfs._savingHighlight = false;
+    }
   },
 
   /* ---- sticky notes ---- */

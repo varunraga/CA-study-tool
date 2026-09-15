@@ -42,6 +42,7 @@ button{font-family:inherit;cursor:pointer;}
 /* SIDEBAR — a refined private-study rail */
 .sidebar{width:256px;flex-shrink:0;background:var(--bg-elev);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow-y:auto;position:relative;transition:width .16s ease;}
 body.pdf-fullwidth .sidebar{width:0;min-width:0;border-right:none;overflow:hidden;}
+body.pdf-fullwidth .topbar{display:none;}
 .pdf-sidebar-toggle{background:var(--bg-elev-2);border:1px solid var(--border);border-radius:8px;padding:6px 9px;color:var(--text-dim);font-size:13px;margin-right:8px;flex-shrink:0;}
 .pdf-sidebar-toggle:hover{color:var(--text);border-color:var(--accent);}
 .sidebar-header{padding:22px 18px 16px;display:flex;align-items:center;gap:11px;border-bottom:1px solid var(--border);margin-bottom:6px;}
@@ -222,6 +223,7 @@ textarea{resize:vertical;}
   .topbar .search-top{display:none;}
   #driveStatusBadge{display:none !important;} /* still reachable via Settings; the topbar is too narrow for it here */
   .pdf-sidebar-toggle{display:none;} /* mobile already has the hamburger menu for this */
+  body.pdf-fullwidth .topbar{display:flex !important;} /* keep the hamburger reachable on mobile — it's the only way to the sidebar there */
   .pdf-shell{overflow-y:auto;}
   .pdf-body-row{flex-direction:column;overflow:visible;}
   .pdf-canvas-wrap{flex:none;min-height:50vh;}
