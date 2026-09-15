@@ -231,16 +231,18 @@ function toast(msg) {
 /* ============================== DB ============================== */
 const STORES = ['courses', 'subjects', 'chapters', 'topics', 'notes', 'pdfs', 'pdfBookmarks',
   'annotations', 'mnemonics', 'jargons', 'questions', 'flashcards', 'bookmarks',
-  'studySessions', 'settings', 'trash', 'noteVersions'];
+  'studySessions', 'settings', 'trash', 'noteVersions', 'tombstones'];
 
 const DB = (() => {
   let db;
   function open() {
     return new Promise((resolve, reject) => {
-      // v2 adds the noteVersions store (note version history). onupgradeneeded
-      // fires for both brand-new browsers and anyone upgrading from v1, and
-      // just creates whatever stores are missing — existing data is untouched.
-      const req = indexedDB.open('castudy', 2);
+      // v3 adds the tombstones store (records of intentionally-deleted items,
+      // so Drive sync's merge step never resurrects something you deleted —
+      // see recordTombstone()). onupgradeneeded fires for both brand-new
+      // browsers and anyone upgrading from an earlier version, and just
+      // creates whatever stores are missing — existing data is untouched.
+      const req = indexedDB.open('castudy', 3);
       req.onupgradeneeded = (e) => {
         const d = e.target.result;
         STORES.forEach(name => {
@@ -274,6 +276,16 @@ async function saveItem(store, obj) {
   if (typeof DriveSync !== 'undefined') DriveSync.markDirty();
   return obj;
 }
+async function recordTombstone(store, itemId) {
+  await DB.put('tombstones', { id: uid(), itemStore: store, itemId, deletedAt: nowISO() });
+  Cache.tombstones = await DB.all('tombstones');
+}
+async function clearTombstone(store, itemId) {
+  const t = (Cache.tombstones || []).find(x => x.itemStore === store && x.itemId === itemId);
+  if (!t) return;
+  await DB.del('tombstones', t.id);
+  Cache.tombstones = Cache.tombstones.filter(x => x.id !== t.id);
+}
 async function trashItem(store, id) {
   const obj = Cache[store].find(x => x.id === id);
   if (!obj) return;
@@ -281,6 +293,7 @@ async function trashItem(store, id) {
   Cache.trash = await DB.all('trash');
   await DB.del(store, id);
   Cache[store] = Cache[store].filter(x => x.id !== id);
+  await recordTombstone(store, id);
 }
 async function restoreTrash(trashId) {
   const t = Cache.trash.find(x => x.id === trashId);
@@ -289,6 +302,7 @@ async function restoreTrash(trashId) {
   Cache[t.type] = await DB.all(t.type);
   await DB.del('trash', trashId);
   Cache.trash = Cache.trash.filter(x => x.id !== trashId);
+  await clearTombstone(t.type, t.data.id);
   toast('Restored');
 }
 
@@ -476,6 +490,7 @@ const Courses = {
     for (const q of (Cache.questions || []).filter(q => q.topicId === id)) { await Flashcards.removeForSource('question', q.id); await trashItem('questions', q.id); }
     await DB.del('topics', id);
     Cache.topics = Cache.topics.filter(x => x.id !== id);
+    await recordTombstone('topics', id);
     if (!opts.skipConfirm) {
       Tree.render();
       if (UI.route === 'topic' && UI.params.id === id) UI.nav('dashboard');
@@ -493,6 +508,7 @@ const Courses = {
     for (const t of topics) await Courses.deleteTopic(t.id, { skipConfirm: true });
     await DB.del('chapters', id);
     Cache.chapters = Cache.chapters.filter(x => x.id !== id);
+    await recordTombstone('chapters', id);
     if (!opts.skipConfirm) {
       Tree.render();
       if (viewingDeletedTopic) UI.nav('dashboard');
@@ -514,6 +530,7 @@ const Courses = {
     for (const p of (Cache.pdfs || []).filter(p => p.subjectId === id)) { p.subjectId = ''; await saveItem('pdfs', p); }
     await DB.del('subjects', id);
     Cache.subjects = Cache.subjects.filter(x => x.id !== id);
+    await recordTombstone('subjects', id);
     if (!opts.skipConfirm) {
       Tree.render();
       if (viewingDeletedTopic) UI.nav('dashboard');
@@ -530,6 +547,7 @@ const Courses = {
     for (const s of subjects) await Courses.deleteSubject(s.id, { skipConfirm: true });
     await DB.del('courses', id);
     Cache.courses = Cache.courses.filter(x => x.id !== id);
+    await recordTombstone('courses', id);
     Tree.render();
     if (viewingDeletedTopic) UI.nav('dashboard');
     toast('Course deleted');
@@ -800,6 +818,7 @@ const Flashcards = {
     if (!fc) return;
     await DB.del('flashcards', fc.id);
     Cache.flashcards = Cache.flashcards.filter(f => f.id !== fc.id);
+    await recordTombstone('flashcards', fc.id);
   }
 };
 
@@ -1065,25 +1084,42 @@ const Notes = {
     document.getElementById('selToolbar')?.remove();
     const id = UI.params.id; Notes.onEdit(id);
   },
-  async annotate(noteId) {
+  annotate(noteId) {
     const sel = window.getSelection();
+    if (!sel.rangeCount) return;
+    const range = sel.getRangeAt(0).cloneRange(); // capture now — any dialog can clear the live selection
     const text = sel.toString();
     document.getElementById('selToolbar')?.remove();
-    const comment = prompt('Annotation (comment / doubt / exam tip):');
+    Modal.open('Annotation', `
+      <label>Comment / doubt / exam tip</label>
+      <textarea id="mNoteAnnotComment" rows="3" placeholder="What do you want to remember about this?" title="Annotation text"></textarea>
+      <div class="modal-actions"><button class="btn secondary" onclick="Modal.close()" title="Discard and close this dialog">Cancel</button>
+      <button class="btn" onclick="Notes.saveAnnotation('${noteId}')" title="Save this annotation">Save</button></div>`);
+    Notes._pendingAnnotRange = range;
+    Notes._pendingAnnotText = text;
+    setTimeout(() => document.getElementById('mNoteAnnotComment')?.focus(), 50);
+  },
+  async saveAnnotation(noteId) {
+    const comment = document.getElementById('mNoteAnnotComment').value.trim();
+    Modal.close();
     if (!comment) return;
+    const range = Notes._pendingAnnotRange;
+    const text = Notes._pendingAnnotText || '';
     await saveItem('annotations', { id: uid(), targetType: 'note', targetId: noteId, type: 'comment', text: text.slice(0, 80), comment, createdAt: nowISO() });
-    // mark the flag inline
-    const range = sel.rangeCount ? sel.getRangeAt(0) : null;
     if (range) {
-      const span = document.createElement('span'); span.className = 'annot-flag'; span.title = comment; span.textContent = '💬';
-      try { range.collapse(false); range.insertNode(span); } catch (e) { }
+      try {
+        const span = document.createElement('span'); span.className = 'annot-flag'; span.title = comment; span.textContent = '💬';
+        range.collapse(false); range.insertNode(span);
+        Notes.onEdit(noteId); // the flag span is a real DOM change — make sure it actually gets saved
+      } catch (e) { /* selection's underlying nodes changed since capture — skip the inline flag, the annotation itself is still saved */ }
     }
-    Notes.onEdit(noteId);
-    Router.render();
+    Notes._pendingAnnotRange = null; Notes._pendingAnnotText = null;
+    toast('Annotation saved');
   },
   async deleteAnnotation(annotId, noteId) {
     await DB.del('annotations', annotId);
     Cache.annotations = Cache.annotations.filter(a => a.id !== annotId);
+    await recordTombstone('annotations', annotId);
     Router.render();
   },
   async remove(id) { if (!confirm('Move this note to Trash?')) return; await trashItem('notes', id); UI.nav('dashboard'); toast('Note moved to Trash'); },
@@ -1341,7 +1377,7 @@ const Bookmarks = {
     await saveItem('bookmarks', { id: uid(), targetType, targetId, label, createdAt: nowISO() });
     toast('Bookmarked');
   },
-  async remove(id) { await DB.del('bookmarks', id); Cache.bookmarks = Cache.bookmarks.filter(b => b.id !== id); Router.render(); },
+  async remove(id) { await DB.del('bookmarks', id); Cache.bookmarks = Cache.bookmarks.filter(b => b.id !== id); await recordTombstone('bookmarks', id); Router.render(); },
   render() {
     const items = Cache.bookmarks || [];
     if (!items.length) return emptyState('🔖', 'Bookmark notes, PDF pages and questions to find them fast.', null, null);
@@ -1488,7 +1524,7 @@ const Pdfs = {
         <button class="icon-btn pdf-edit-only" id="pdfUndoBtn" onclick="Pdfs.undo()" title="Undo the last highlight, underline, sticky note or drawing" disabled>↶ Undo</button>
         <button class="icon-btn pdf-edit-only" id="pdfRedoBtn" onclick="Pdfs.redo()" title="Redo" disabled>↷ Redo</button>
         <button class="icon-btn pdf-edit-only" onclick="Pdfs.bookmarkPage('${id}')" title="Bookmark this page for quick return">🔖 Bookmark page</button>
-        <button class="icon-btn pdf-edit-only" id="stickyBtn" onclick="Pdfs.toggleStickyMode()" title="Click a spot on the page to drop a sticky note there">📌 Sticky note</button>
+        <button class="icon-btn" id="stickyBtn" onclick="Pdfs.toggleStickyMode()" title="Click a spot on the page to drop a sticky note there">📌 Sticky note</button>
         <button class="icon-btn pdf-edit-only" id="drawBtn" onclick="Pdfs.toggleDrawMode()" title="Draw freehand ink, an arrow, or a rectangle on this page">✏ Draw</button>
         <button class="icon-btn pdf-edit-only" id="splitBtn" onclick="Pdfs.toggleSplit()" title="Dock a note editor beside the PDF, for taking notes while you read">📝 Split with Notes</button>
         <button class="icon-btn pdf-edit-only" onclick="Pdfs.exportAnnotatedPdf()" title="Download a copy of this PDF with all highlights, underlines and drawings permanently burned in — the original stays untouched">⬇ Export PDF</button>
@@ -1527,7 +1563,6 @@ const Pdfs = {
     if (pdfReadMode) {
       if (pdfDrawMode) Pdfs.toggleDrawMode();
       if (pdfSplitMode) Pdfs.toggleSplit();
-      if (pdfStickyMode) Pdfs.toggleStickyMode();
     }
     const shell = document.querySelector('.pdf-shell');
     if (shell) shell.classList.toggle('pdf-readmode', pdfReadMode);
@@ -1595,7 +1630,8 @@ const Pdfs = {
     bar.style.top = (rect.top + window.scrollY - 40) + 'px';
     bar.style.left = (rect.left + window.scrollX) + 'px';
     bar.innerHTML = colors.map((c, i) => `<button title="${esc(c.label)}" onmousedown="event.preventDefault();Pdfs.saveHighlight('${c.color}','${c.key}')">${['🟡', '🟢', '🔵', '🔴', '🟣', '🟠'][i] || '●'}</button>`).join('')
-      + `<button title="Underline" onmousedown="event.preventDefault();Pdfs.saveHighlight('','underline')">U̲</button>`;
+      + `<button title="Underline" onmousedown="event.preventDefault();Pdfs.saveHighlight('','underline')">U̲</button>`
+      + `<button title="Add a comment/annotation to this selection" onmousedown="event.preventDefault();Pdfs.annotateSelection()">💬</button>`;
     document.body.appendChild(bar);
   },
   renderSelectionPreview(range) {
@@ -1610,6 +1646,15 @@ const Pdfs = {
     const preview = document.getElementById('pdfSelectionPreview');
     if (preview) preview.innerHTML = '';
   },
+  computeRectsFromRange(range) {
+    const wrap = document.getElementById('pdfPageWrap');
+    const wrapRect = wrap.getBoundingClientRect();
+    const merged = mergeLineRectsDOM(getRangeWordRects(range));
+    return merged.map(r => ({
+      x: (r.left - wrapRect.left) / pdfScale, y: (r.top - wrapRect.top) / pdfScale,
+      w: r.width / pdfScale, h: r.height / pdfScale
+    }));
+  },
   async saveHighlight(color, kind) {
     if (Pdfs._savingHighlight) return; // re-entrancy guard
     Pdfs._savingHighlight = true;
@@ -1618,13 +1663,7 @@ const Pdfs = {
       if (!sel.rangeCount) return;
       const range = sel.getRangeAt(0);
       const text = sel.toString();
-      const wrap = document.getElementById('pdfPageWrap');
-      const wrapRect = wrap.getBoundingClientRect();
-      const merged = mergeLineRectsDOM(getRangeWordRects(range));
-      const rects = merged.map(r => ({
-        x: (r.left - wrapRect.left) / pdfScale, y: (r.top - wrapRect.top) / pdfScale,
-        w: r.width / pdfScale, h: r.height / pdfScale
-      }));
+      const rects = Pdfs.computeRectsFromRange(range);
       sel.removeAllRanges();
       document.getElementById('pdfSelToolbar')?.remove();
       Pdfs.clearSelectionPreview();
@@ -1651,6 +1690,43 @@ const Pdfs = {
     } finally {
       Pdfs._savingHighlight = false;
     }
+  },
+
+  /* ---- comment annotations on selected PDF text (distinct from a color highlight) ---- */
+  annotateSelection() {
+    const sel = window.getSelection();
+    if (!sel.rangeCount) return;
+    const range = sel.getRangeAt(0).cloneRange(); // capture now — the dialog can clear the live selection
+    const text = sel.toString();
+    sel.removeAllRanges();
+    document.getElementById('pdfSelToolbar')?.remove();
+    Pdfs.clearSelectionPreview();
+    Modal.open('PDF Annotation', `
+      <label>Comment / doubt / exam tip</label>
+      <textarea id="mPdfAnnotComment" rows="3" placeholder="What do you want to remember about this?" title="Annotation text"></textarea>
+      <div class="modal-actions"><button class="btn secondary" onclick="Modal.close()" title="Discard and close this dialog">Cancel</button>
+      <button class="btn" onclick="Pdfs.saveAnnotationComment()" title="Save this annotation">Save</button></div>`);
+    Pdfs._pendingAnnotRange = range;
+    Pdfs._pendingAnnotText = text;
+    setTimeout(() => document.getElementById('mPdfAnnotComment')?.focus(), 50);
+  },
+  async saveAnnotationComment() {
+    const comment = document.getElementById('mPdfAnnotComment').value.trim();
+    Modal.close();
+    if (!comment) return;
+    const range = Pdfs._pendingAnnotRange;
+    const text = Pdfs._pendingAnnotText || '';
+    Pdfs._pendingAnnotRange = null; Pdfs._pendingAnnotText = null;
+    if (!range) return;
+    const rects = Pdfs.computeRectsFromRange(range);
+    if (!rects.length) return;
+    const saved = await saveItem('annotations', {
+      id: uid(), targetType: 'pdf', pdfId: UI.params.id, page: pdfCurrentPage,
+      kind: 'underline', color: '', rects, text: text.slice(0, 140), comment, createdAt: nowISO()
+    });
+    Pdfs.pushUndo({ type: 'create', data: saved });
+    Pdfs.refreshOverlayAndPanel();
+    toast('Annotation saved');
   },
 
   /* ---- sticky notes ---- */
@@ -1786,7 +1862,7 @@ const Pdfs = {
     const items = (Cache.annotations || []).filter(a => a.targetType === 'pdf' && a.pdfId === UI.params.id && a.page === pdfCurrentPage && ['ink', 'arrow', 'rect'].includes(a.kind));
     if (!items.length) { toast('No drawings on this page'); return; }
     if (!confirm(`Remove all ${items.length} drawing(s) on this page?`)) return;
-    for (const a of items) { await DB.del('annotations', a.id); Pdfs.pushUndo({ type: 'delete', data: a }); }
+    for (const a of items) { await DB.del('annotations', a.id); await recordTombstone('annotations', a.id); Pdfs.pushUndo({ type: 'delete', data: a }); }
     const ids = new Set(items.map(a => a.id));
     Cache.annotations = Cache.annotations.filter(a => !ids.has(a.id));
     Pdfs.redrawInkCanvas();
@@ -1797,6 +1873,7 @@ const Pdfs = {
     const a = Cache.annotations.find(x => x.id === id);
     await DB.del('annotations', id);
     Cache.annotations = Cache.annotations.filter(x => x.id !== id);
+    await recordTombstone('annotations', id);
     if (a) Pdfs.pushUndo({ type: 'delete', data: a });
     Pdfs.redrawInkCanvas();
     Pdfs.refreshSidePanel();
@@ -1820,9 +1897,11 @@ const Pdfs = {
     if (shouldExist) {
       await DB.put('annotations', action.data);
       if (!Cache.annotations.some(a => a.id === action.data.id)) Cache.annotations.push(action.data);
+      await clearTombstone('annotations', action.data.id);
     } else {
       await DB.del('annotations', action.data.id);
       Cache.annotations = Cache.annotations.filter(a => a.id !== action.data.id);
+      await recordTombstone('annotations', action.data.id);
     }
   },
   async undo() {
@@ -1961,6 +2040,7 @@ const Pdfs = {
     const a = Cache.annotations.find(x => x.id === id);
     await DB.del('annotations', id);
     Cache.annotations = Cache.annotations.filter(x => x.id !== id);
+    await recordTombstone('annotations', id);
     if (a) Pdfs.pushUndo({ type: 'delete', data: a });
     Modal.close();
     Pdfs.refreshOverlayAndPanel();
@@ -1971,6 +2051,7 @@ const Pdfs = {
     if (!confirm(`Delete this ${kindLabel}?`)) return;
     await DB.del('annotations', id);
     Cache.annotations = Cache.annotations.filter(x => x.id !== id);
+    await recordTombstone('annotations', id);
     Pdfs.pushUndo({ type: 'delete', data: a });
     Modal.close();
     Pdfs.refreshOverlayAndPanel();
@@ -2555,7 +2636,7 @@ const TrashView = {
     </div>`).join('')}
     ${items.length ? `<button class="btn danger sm" style="margin-top:12px;" onclick="TrashView.empty()" title="Permanently delete everything in Trash">Empty Trash</button>` : ''}`;
   },
-  async purge(id) { if (!confirm('Permanently delete?')) return; await DB.del('trash', id); Cache.trash = Cache.trash.filter(t => t.id !== id); Router.render(); },
+  async purge(id) { if (!confirm('Permanently delete?')) return; await DB.del('trash', id); Cache.trash = Cache.trash.filter(t => t.id !== id); await recordTombstone('trash', id); Router.render(); },
   async empty() { if (!confirm('Empty trash permanently?')) return; await DB.clearStore('trash'); Cache.trash = []; Router.render(); }
 };
 
@@ -2659,9 +2740,22 @@ const BackupService = {
     return data;
   },
   async mergeBackupObject(data, silent) {
+    // Tombstones (this device's own + whatever came in from the remote data)
+    // are what let this merge tell "deleted on purpose" apart from "just
+    // hasn't synced yet" — without consulting them, merging back in
+    // anything Drive still has would silently resurrect deletions made
+    // since the last push, which is exactly what caused the "delete a
+    // highlight and it comes back a moment later" bug.
+    if (data.tombstones) for (const t of data.tombstones) await DB.put('tombstones', t);
+    await DB.all('tombstones').then(t => { Cache.tombstones = t; });
+    const tombstoneMap = new Map((Cache.tombstones || []).map(t => [t.itemStore + ':' + t.itemId, t.deletedAt]));
     for (const s of STORES) {
-      if (s === 'pdfs' || s === 'noteVersions' || !data[s]) continue;
-      for (const obj of data[s]) await DB.put(s, obj);
+      if (s === 'pdfs' || s === 'noteVersions' || s === 'tombstones' || !data[s]) continue;
+      for (const obj of data[s]) {
+        const deletedAt = tombstoneMap.get(s + ':' + obj.id);
+        if (deletedAt && (!obj.updatedAt || obj.updatedAt <= deletedAt)) continue; // respect the local deletion
+        await DB.put(s, obj);
+      }
     }
     await loadAllToCache();
     if (!silent) { Tree.render(); Router.render(); }
