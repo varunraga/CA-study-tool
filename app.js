@@ -265,14 +265,31 @@ const DB = (() => {
 /* In-memory cache mirrors IndexedDB for fast sync rendering. */
 const Cache = {};
 async function loadAllToCache() {
-  for (const s of STORES) Cache[s] = await DB.all(s);
+  for (const s of STORES) {
+    if (s === 'pdfs') {
+      const all = await DB.all('pdfs');
+      Cache.pdfs = all.map(({ blob, ...meta }) => meta); // strip the binary content — see Pdfs.load()/exportAnnotatedPdf() for on-demand fetch
+    } else {
+      Cache[s] = await DB.all(s);
+    }
+  }
 }
 async function saveItem(store, obj) {
   obj.updatedAt = nowISO();
-  await DB.put(store, obj);
+  let toSave = obj;
+  if (store === 'pdfs' && !obj.blob) {
+    // Cache.pdfs is metadata-only (blob stripped to keep it out of memory) —
+    // saving a PDF's metadata (e.g. re-tagging its subject) must not
+    // overwrite the stored record without its binary content, since
+    // DB.put() replaces the whole record by key.
+    const existing = await DB.get('pdfs', obj.id);
+    if (existing && existing.blob) toSave = { ...obj, blob: existing.blob };
+  }
+  await DB.put(store, toSave);
   const arr = Cache[store];
   const i = arr.findIndex(x => x.id === obj.id);
-  if (i >= 0) arr[i] = obj; else arr.push(obj);
+  const cacheObj = store === 'pdfs' ? (({ blob, ...meta }) => meta)(toSave) : obj;
+  if (i >= 0) arr[i] = cacheObj; else arr.push(cacheObj);
   if (typeof DriveSync !== 'undefined') DriveSync.markDirty();
   return obj;
 }
@@ -298,6 +315,7 @@ async function trashItem(store, id) {
 async function restoreTrash(trashId) {
   const t = Cache.trash.find(x => x.id === trashId);
   if (!t) return;
+  t.data.updatedAt = nowISO();
   await DB.put(t.type, t.data);
   Cache[t.type] = await DB.all(t.type);
   await DB.del('trash', trashId);
@@ -354,6 +372,9 @@ const UI = {
   params: {},
   nav(route, params = {}) {
     this.route = route; this.params = params;
+    if (route === 'pdfs') Pdfs.libraryVisibleCount = 50;
+    if (route === 'questions') Questions.visibleCount = 50;
+    if (route === 'search') SearchView.visibleCount = 50;
     document.body.classList.toggle('pdf-fullwidth', route === 'pdf');
     document.querySelectorAll('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.route === route));
     document.querySelectorAll('.bottom-nav button').forEach(n => n.classList.toggle('active', n.dataset.route === route));
@@ -383,14 +404,43 @@ const UI = {
 };
 
 const Modal = {
+  _lastFocused: null,
   open(title, bodyHtml, noFooter) {
+    Modal._lastFocused = document.activeElement;
     const backdrop = document.createElement('div');
     backdrop.className = 'modal-backdrop'; backdrop.id = 'modalBackdrop';
     backdrop.onclick = (e) => { if (e.target === backdrop) Modal.close(); };
+    backdrop.addEventListener('keydown', Modal._trapFocus);
     backdrop.innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-label="${esc(title)}"><h3>${esc(title)}</h3>${bodyHtml}</div>`;
     document.body.appendChild(backdrop);
+    // Most callers already autofocus a specific input themselves (typically
+    // via their own 50ms setTimeout) — this is just a fallback so keyboard
+    // users always land somewhere sensible even in modals that don't.
+    setTimeout(() => {
+      if (!backdrop.contains(document.activeElement)) {
+        const focusable = backdrop.querySelector('input, textarea, select, button, [tabindex]');
+        if (focusable) focusable.focus();
+      }
+    }, 60);
   },
-  close() { const b = document.getElementById('modalBackdrop'); if (b) b.remove(); }
+  _trapFocus(e) {
+    if (e.key !== 'Tab') return;
+    const backdrop = document.getElementById('modalBackdrop');
+    if (!backdrop) return;
+    const focusables = Array.from(backdrop.querySelectorAll('input, textarea, select, button, a[href], [tabindex]:not([tabindex="-1"])')).filter((el) => !el.disabled && el.offsetParent !== null);
+    if (!focusables.length) return;
+    const first = focusables[0], last = focusables[focusables.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  },
+  close() {
+    const b = document.getElementById('modalBackdrop');
+    if (b) b.remove();
+    if (Modal._lastFocused && typeof Modal._lastFocused.focus === 'function') {
+      try { Modal._lastFocused.focus(); } catch (e) { /* element may no longer be in the DOM */ }
+    }
+    Modal._lastFocused = null;
+  }
 };
 
 /* ============================== COURSE / SUBJECT / CHAPTER / TOPIC TREE ============================== */
@@ -578,6 +628,22 @@ const Tree = {
       if (obj && obj.order !== i) { obj.order = i; await saveItem(store, obj); }
     }
     Tree.render();
+  },
+  async moveOrder(store, parentKey, parentId, id, direction) {
+    // Keyboard/click alternative to drag-and-drop reordering — swaps this
+    // item with its immediate neighbor in the current sort order. Works
+    // regardless of gaps in the stored `order` values (deletions can leave
+    // some), since it swaps whatever the two adjacent items' raw values
+    // currently are, rather than assuming they're contiguous integers.
+    const siblings = (Cache[store] || []).filter(x => x[parentKey] === parentId).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    const idx = siblings.findIndex(x => x.id === id);
+    const swapIdx = idx + direction;
+    if (idx === -1 || swapIdx < 0 || swapIdx >= siblings.length) return; // already at the top/bottom
+    const a = siblings[idx], b = siblings[swapIdx];
+    const aOrder = a.order ?? idx, bOrder = b.order ?? swapIdx;
+    a.order = bOrder; b.order = aOrder;
+    await saveItem(store, a); await saveItem(store, b);
+    Tree.render();
   }
 };
 
@@ -610,7 +676,15 @@ const SubjectsHub = {
   },
   renderOverview() {
     const courses = Cache.courses || [];
-    if (!courses.length) return emptyState('📚', 'Create your first course to start building your syllabus.', 'Create Course', 'Courses.promptNew()');
+    if (!courses.length) return `<div class="empty-state">
+      <div style="font-size:38px;">📚</div>
+      <h3>Welcome — let's set up your syllabus</h3>
+      <p class="subtle" style="max-width:420px;margin:0 auto 18px;">Organize everything as Course → Subject → Chapter → Topic. You can start from scratch, or load a small worked example first to see how notes, mnemonics, questions, and flashcards all fit together.</p>
+      <div class="note-meta-row" style="justify-content:center;">
+        <button class="btn" onclick="Courses.promptNew()" title="Start with your own course, empty">Create Your First Course</button>
+        <button class="btn secondary" onclick="loadExampleContent()" title="Add one small worked example (a GST topic with a note, mnemonic, question, and flashcards) to explore the app — safe to delete anytime">Explore With an Example</button>
+      </div>
+    </div>`;
     return `<div style="display:flex;justify-content:space-between;align-items:baseline;">
       <h2 style="margin:0;">Subjects</h2>
       <button class="btn sm secondary" onclick="Courses.promptNew()" title="Add another course">+ Course</button>
@@ -654,6 +728,7 @@ const SubjectsHub = {
         ${pdfs.length ? `<span>${pdfs.length} PDF${pdfs.length === 1 ? '' : 's'}</span>` : ''}
       </div>
       <span class="del-mini" style="position:absolute;top:10px;right:10px;" onclick="event.stopPropagation();Courses.deleteSubject('${s.id}')" title="Delete this subject">✕</span>
+      <span style="position:absolute;top:10px;right:32px;" onclick="event.stopPropagation();">${moveButtonsHTML('subjects', 'courseId', s.courseId, s.id)}</span>
     </div>`;
   },
   renderSubjectDetail() {
@@ -700,6 +775,7 @@ const SubjectsHub = {
       onclick="SubjectsHub.openChapter('${c.id}')" title="Open this chapter">
       <span>📖</span>
       <div style="flex:1;">${esc(c.name)}<div class="subtle">${topics.length} topic${topics.length === 1 ? '' : 's'} · ${notes.length} note${notes.length === 1 ? '' : 's'}${pdfs.length ? ` · ${pdfs.length} PDF${pdfs.length === 1 ? '' : 's'}` : ''}</div></div>
+      <span onclick="event.stopPropagation();">${moveButtonsHTML('chapters', 'subjectId', c.subjectId, c.id)}</span>
       <span class="del-mini" onclick="event.stopPropagation();Courses.deleteChapter('${c.id}')" title="Delete this chapter">✕</span>
     </div>`;
   },
@@ -728,6 +804,7 @@ const SubjectsHub = {
       onclick="UI.nav('topic',{id:'${t.id}'})" title="Open this topic">
       <span>📄</span>
       <div style="flex:1;">${esc(t.name)}<div class="subtle">${notes.length} note${notes.length === 1 ? '' : 's'} · ${mnemonics.length} mnemonic${mnemonics.length === 1 ? '' : 's'} · ${questions.length} question${questions.length === 1 ? '' : 's'}${pdfs.length ? ` · ${pdfs.length} PDF${pdfs.length === 1 ? '' : 's'}` : ''}</div></div>
+      <span onclick="event.stopPropagation();">${moveButtonsHTML('topics', 'chapterId', t.chapterId, t.id)}</span>
       <span class="del-mini" onclick="event.stopPropagation();Courses.deleteTopic('${t.id}')" title="Delete this topic">✕</span>
     </div>`;
   }
@@ -1297,12 +1374,15 @@ const Questions = {
     await Flashcards.removeForSource('question', id);
     await trashItem('questions', id); Router.render();
   },
+  visibleCount: 50,
   render() {
     const items = Cache.questions || [];
     if (!items.length) return emptyState('❓', 'Build your question bank from past papers and practice.', 'Add Question', "Questions.promptNew()");
+    const shown = items.slice(0, this.visibleCount);
+    const remaining = items.length - shown.length;
     return `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
       <h2 style="margin:0;">Questions (${items.length})</h2><button class="btn" onclick="Questions.promptNew()" title="Add a question to your question bank">+ New Question</button></div>
-      ${items.map(q => { const fc = Flashcards.findFor('question', q.id); return `<div class="card" style="margin-bottom:10px;">
+      ${shown.map(q => { const fc = Flashcards.findFor('question', q.id); return `<div class="card" style="margin-bottom:10px;">
         <div style="display:flex;justify-content:space-between;gap:10px;">
           <div>${esc(q.questionText)}</div>
           <span class="pill">${q.marks} marks</span>
@@ -1315,7 +1395,8 @@ const Questions = {
         <div class="subtle" style="margin-top:4px;">🃏 ${fc && fc.nextDate ? 'Next revision: ' + fmtDateShort(fc.nextDate) : 'Flashcard not yet reviewed'}</div>
         ${Questions.answerAreaHTML(q)}
         <div id="ans-${q.id}" style="display:none;margin-top:8px;padding:8px;background:var(--bg);border-radius:8px;">${esc(q.modelAnswer) || '<span class="subtle">No model answer recorded.</span>'}</div>
-      </div>`; }).join('')}`;
+      </div>`; }).join('')}
+      ${remaining > 0 ? `<button class="btn sm secondary" onclick="Questions.visibleCount+=50;Router.render();" title="Show more questions">Show ${Math.min(remaining, 50)} more (${remaining} remaining)</button>` : ''}`;
   },
   answerAreaHTML(q) {
     if (q.type === 'MCQ' && q.options && q.options.length) {
@@ -1475,22 +1556,25 @@ const Pdfs = {
     Modal.close(); toast('PDF imported'); Router.render();
   },
   async remove(id) { if (!confirm('Move this PDF to Trash?')) return; await trashItem('pdfs', id); Router.render(); },
+  libraryVisibleCount: 50,
   renderLibrary() {
     const items = Cache.pdfs || [];
+    const shown = items.slice(0, this.libraryVisibleCount);
+    const remaining = items.length - shown.length;
     return `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
-      <h2 style="margin:0;">PDF Library</h2>
+      <h2 style="margin:0;">PDF Library${items.length ? ` (${items.length})` : ''}</h2>
       <div><button class="btn" onclick="Pdfs.upload()" title="Choose a PDF file to upload">+ Import PDF</button></div></div>
-      ${items.length ? `<div class="grid cols-3">${items.map(p => `
+      ${items.length ? `<div class="grid cols-3">${shown.map(p => `
       <div class="card" style="cursor:pointer;" onclick="UI.nav('pdf',{id:'${p.id}'})" title="Open this PDF">
         <div style="font-size:32px;">📄</div><b>${esc(p.title)}</b>
         <div class="subtle">${p.pageCount || '?'} pages</div>
         <div style="text-align:right;margin-top:8px;"><button class="btn sm secondary" onclick="event.stopPropagation();Pdfs.remove('${p.id}')" title="Move this PDF to Trash">Delete</button></div>
-      </div>`).join('')}</div>` : emptyState('📄', 'No PDFs yet.', 'Import PDF', 'Pdfs.upload()')}`;
+      </div>`).join('')}</div>${remaining > 0 ? `<button class="btn sm secondary" style="margin-top:16px;" onclick="Pdfs.libraryVisibleCount+=50;Router.render();" title="Show more PDFs">Show ${Math.min(remaining, 50)} more (${remaining} remaining)</button>` : ''}` : emptyState('📄', 'No PDFs yet.', 'Import PDF', 'Pdfs.upload()')}`;
   },
   async renderViewer(id) {
     const rec = Cache.pdfs.find(p => p.id === id);
     if (!rec) return `<div class="empty-state"><h3>PDF not found</h3></div>`;
-    setTimeout(() => Pdfs.load(rec), 30);
+    setTimeout(() => Pdfs.load(id), 30);
     pdfSplitMode = false; pdfSplitNoteId = null; pdfDrawMode = false; pdfDrawTool = 'pen'; pdfDrawColor = '#202A22';
     pdfReadMode = false;
     pdfUndoStack = []; pdfRedoStack = [];
@@ -1577,9 +1661,11 @@ const Pdfs = {
     const shell = document.querySelector('.pdf-shell');
     if (shell) shell.style.height = (isFull && !isMobileLayout()) ? 'calc(100vh - 4px)' : 'calc(100vh - 62px)';
   },
-  async load(rec) {
+  async load(id) {
     try {
-      pdfDocCache = await pdfjsLib.getDocument({ data: rec.blob.slice(0) }).promise;
+      const full = await DB.get('pdfs', id);
+      if (!full || !full.blob) { toast('Could not find this PDF\'s content'); return; }
+      pdfDocCache = await pdfjsLib.getDocument({ data: full.blob.slice(0) }).promise;
       pdfCurrentPage = 1; pdfScale = 1.2; pdfStickyMode = false;
       Pdfs.renderPage();
     } catch (e) { toast('Could not render PDF'); console.error(e); }
@@ -1858,23 +1944,31 @@ const Pdfs = {
       Pdfs.drawArrow(ctx, p1.x, p1.y, p2.x, p2.y, a.color);
     }
   },
+  async _removeAnnotationRecord(id) {
+    // Core delete, shared by every PDF-annotation delete path (inline ✕,
+    // modal Delete, single-drawing delete, and the bulk Clear Page loop) —
+    // one place that removes the record, updates the cache, records a
+    // tombstone (so sync can never resurrect it), and pushes an undo
+    // entry, rather than four near-identical copies of the same sequence.
+    const a = Cache.annotations.find(x => x.id === id);
+    if (!a) return null;
+    await DB.del('annotations', id);
+    Cache.annotations = Cache.annotations.filter(x => x.id !== id);
+    await recordTombstone('annotations', id);
+    Pdfs.pushUndo({ type: 'delete', data: a });
+    return a;
+  },
   async clearPageDrawings() {
     const items = (Cache.annotations || []).filter(a => a.targetType === 'pdf' && a.pdfId === UI.params.id && a.page === pdfCurrentPage && ['ink', 'arrow', 'rect'].includes(a.kind));
     if (!items.length) { toast('No drawings on this page'); return; }
     if (!confirm(`Remove all ${items.length} drawing(s) on this page?`)) return;
-    for (const a of items) { await DB.del('annotations', a.id); await recordTombstone('annotations', a.id); Pdfs.pushUndo({ type: 'delete', data: a }); }
-    const ids = new Set(items.map(a => a.id));
-    Cache.annotations = Cache.annotations.filter(a => !ids.has(a.id));
+    for (const a of items) await Pdfs._removeAnnotationRecord(a.id);
     Pdfs.redrawInkCanvas();
     Pdfs.refreshSidePanel();
   },
   async deleteDrawing(id) {
     if (!confirm('Delete this drawing?')) return;
-    const a = Cache.annotations.find(x => x.id === id);
-    await DB.del('annotations', id);
-    Cache.annotations = Cache.annotations.filter(x => x.id !== id);
-    await recordTombstone('annotations', id);
-    if (a) Pdfs.pushUndo({ type: 'delete', data: a });
+    await Pdfs._removeAnnotationRecord(id);
     Pdfs.redrawInkCanvas();
     Pdfs.refreshSidePanel();
   },
@@ -1895,6 +1989,7 @@ const Pdfs = {
     const isCreate = action.type === 'create';
     const shouldExist = direction === 'undo' ? !isCreate : isCreate;
     if (shouldExist) {
+      action.data.updatedAt = nowISO();
       await DB.put('annotations', action.data);
       if (!Cache.annotations.some(a => a.id === action.data.id)) Cache.annotations.push(action.data);
       await clearTombstone('annotations', action.data.id);
@@ -1933,8 +2028,8 @@ const Pdfs = {
      this isn't a rasterized screenshot of the page. */
   async exportAnnotatedPdf() {
     const pdfId = UI.params.id;
-    const rec = Cache.pdfs.find(p => p.id === pdfId);
-    if (!rec) return;
+    const rec = await DB.get('pdfs', pdfId);
+    if (!rec || !rec.blob) { toast('Could not find this PDF\'s content'); return; }
     if (typeof PDFLib === 'undefined') { toast('The PDF export library failed to load — check your connection and try again'); return; }
     const allAnnots = (Cache.annotations || []).filter(a => a.targetType === 'pdf' && a.pdfId === pdfId);
     if (!allAnnots.length) { toast('No highlights, drawings or notes on this PDF yet — nothing to burn in'); return; }
@@ -2037,11 +2132,7 @@ const Pdfs = {
     Pdfs.refreshOverlayAndPanel();
   },
   async deleteAnnotation(id) {
-    const a = Cache.annotations.find(x => x.id === id);
-    await DB.del('annotations', id);
-    Cache.annotations = Cache.annotations.filter(x => x.id !== id);
-    await recordTombstone('annotations', id);
-    if (a) Pdfs.pushUndo({ type: 'delete', data: a });
+    await Pdfs._removeAnnotationRecord(id);
     Modal.close();
     Pdfs.refreshOverlayAndPanel();
   },
@@ -2049,10 +2140,7 @@ const Pdfs = {
     const a = Cache.annotations.find(x => x.id === id); if (!a) return;
     const kindLabel = ['ink', 'arrow', 'rect'].includes(a.kind) ? 'drawing' : a.kind === 'sticky' ? 'sticky note' : a.kind;
     if (!confirm(`Delete this ${kindLabel}?`)) return;
-    await DB.del('annotations', id);
-    Cache.annotations = Cache.annotations.filter(x => x.id !== id);
-    await recordTombstone('annotations', id);
-    Pdfs.pushUndo({ type: 'delete', data: a });
+    await Pdfs._removeAnnotationRecord(id);
     Modal.close();
     Pdfs.refreshOverlayAndPanel();
     Pdfs.redrawInkCanvas();
@@ -2276,21 +2364,21 @@ const Search = {
 /* Full search page — filters (type, subject) and sorting, vs. the CmdK popup
    which is optimized for speed over one or two keystrokes. */
 const SearchView = {
-  query: '', typeFilter: '', subjectFilter: '', sortBy: 'relevance',
+  query: '', typeFilter: '', subjectFilter: '', sortBy: 'relevance', visibleCount: 50,
   render(q) {
     if (typeof q === 'string') this.query = q;
     return `<h2>Search</h2>
       <div class="card" style="margin-bottom:16px;max-width:640px;">
         <label>Query</label><input type="text" id="searchQ" value="${esc(this.query)}" oninput="SearchView.onInput(this.value)" placeholder="Search notes, PDFs, mnemonics, jargons, questions…" title="Search query">
         <div class="note-meta-row" style="margin-top:10px;">
-          <select onchange="SearchView.typeFilter=this.value;SearchView.refresh()" title="Filter results by content type">
+          <select onchange="SearchView.typeFilter=this.value;SearchView.visibleCount=50;SearchView.refresh()" title="Filter results by content type">
             <option value="">All types</option>
             ${['Note', 'PDF', 'Mnemonic', 'Jargon', 'Question'].map(t => `<option value="${t}" ${this.typeFilter === t ? 'selected' : ''}>${t}</option>`).join('')}
           </select>
-          <select onchange="SearchView.subjectFilter=this.value;SearchView.refresh()" title="Filter results by subject">
+          <select onchange="SearchView.subjectFilter=this.value;SearchView.visibleCount=50;SearchView.refresh()" title="Filter results by subject">
             <option value="">All subjects</option>${subjectOptions(this.subjectFilter)}
           </select>
-          <select onchange="SearchView.sortBy=this.value;SearchView.refresh()" title="Change the sort order">
+          <select onchange="SearchView.sortBy=this.value;SearchView.visibleCount=50;SearchView.refresh()" title="Change the sort order">
             <option value="relevance" ${this.sortBy === 'relevance' ? 'selected' : ''}>Sort: Relevance</option>
             <option value="newest" ${this.sortBy === 'newest' ? 'selected' : ''}>Sort: Newest</option>
             <option value="alpha" ${this.sortBy === 'alpha' ? 'selected' : ''}>Sort: Alphabetical</option>
@@ -2299,7 +2387,7 @@ const SearchView = {
       </div>
       <div id="searchResultsWrap">${this.resultsHTML()}</div>`;
   },
-  onInput: debounce(function (v) { SearchView.query = v; SearchView.refresh(); }, 200),
+  onInput: debounce(function (v) { SearchView.query = v; SearchView.visibleCount = 50; SearchView.refresh(); }, 200),
   refresh() { const el = document.getElementById('searchResultsWrap'); if (el) el.innerHTML = this.resultsHTML(); },
   itemSubjectId(r) {
     if (r.type === 'Note') return Cache.notes.find(x => x.id === r.id)?.subjectId;
@@ -2320,8 +2408,11 @@ const SearchView = {
     if (this.subjectFilter) results = results.filter(r => this.itemSubjectId(r) === this.subjectFilter);
     if (this.sortBy === 'alpha') results = [...results].sort((a, b) => (a.title || '').localeCompare(b.title || ''));
     else if (this.sortBy === 'newest') results = [...results].sort((a, b) => new Date(this.itemDate(b) || 0) - new Date(this.itemDate(a) || 0));
+    const shown = results.slice(0, this.visibleCount);
+    const remaining = results.length - shown.length;
     return `<div class="subtle" style="margin-bottom:8px;">${results.length} result${results.length === 1 ? '' : 's'}</div>
-      ${results.length ? results.map(r => `<div class="list-row" onclick="UI.nav('${r.route}',{id:'${r.id}'})" title="Open this ${r.type}"><span>${r.icon}</span><div style="flex:1;">${esc(r.title)}</div><span class="pill">${r.type}</span></div>`).join('') : `<div class="subtle">No results.</div>`}`;
+      ${results.length ? shown.map(r => `<div class="list-row" onclick="UI.nav('${r.route}',{id:'${r.id}'})" title="Open this ${r.type}"><span>${r.icon}</span><div style="flex:1;">${esc(r.title)}</div><span class="pill">${r.type}</span></div>`).join('') : `<div class="subtle">No results.</div>`}
+      ${remaining > 0 ? `<button class="btn sm secondary" style="margin-top:10px;" onclick="SearchView.visibleCount+=50;SearchView.refresh();" title="Show more results">Show ${Math.min(remaining, 50)} more (${remaining} remaining)</button>` : ''}`;
   }
 };
 
@@ -2751,9 +2842,17 @@ const BackupService = {
     const tombstoneMap = new Map((Cache.tombstones || []).map(t => [t.itemStore + ':' + t.itemId, t.deletedAt]));
     for (const s of STORES) {
       if (s === 'pdfs' || s === 'noteVersions' || s === 'tombstones' || !data[s]) continue;
+      const localItems = new Map((Cache[s] || []).map(x => [x.id, x]));
       for (const obj of data[s]) {
         const deletedAt = tombstoneMap.get(s + ':' + obj.id);
         if (deletedAt && (!obj.updatedAt || obj.updatedAt <= deletedAt)) continue; // respect the local deletion
+        // Edit conflicts: if this item was also changed locally since the
+        // last sync, only accept the incoming copy if it's genuinely
+        // newer — otherwise an older remote version could silently
+        // overwrite newer local edits, the same failure mode as the
+        // deletion bug above, just for edits instead of removals.
+        const local = localItems.get(obj.id);
+        if (local && local.updatedAt && obj.updatedAt && local.updatedAt > obj.updatedAt) continue;
         await DB.put(s, obj);
       }
     }
@@ -3217,6 +3316,12 @@ function subjectProgress() {
     return { subject: s, pct, notesCount: notes.length, topicsCount: topics.length };
   });
 }
+function moveButtonsHTML(store, parentKey, parentId, id) {
+  const siblings = (Cache[store] || []).filter(x => x[parentKey] === parentId).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  const idx = siblings.findIndex(x => x.id === id);
+  const isFirst = idx <= 0, isLast = idx === -1 || idx >= siblings.length - 1;
+  return `<button class="move-mini" onclick="event.stopPropagation();Tree.moveOrder('${store}','${parentKey}','${parentId}','${id}',-1)" ${isFirst ? 'disabled' : ''} title="Move up" aria-label="Move up">▲</button><button class="move-mini" onclick="event.stopPropagation();Tree.moveOrder('${store}','${parentKey}','${parentId}','${id}',1)" ${isLast ? 'disabled' : ''} title="Move down" aria-label="Move down">▼</button>`;
+}
 function emptyState(icon, msg, btnLabel, btnAction) {
   return `<div class="empty-state"><div style="font-size:38px;">${icon}</div><h3>${esc(msg)}</h3>
     ${btnLabel ? `<button class="btn" onclick="${btnAction}" title="${esc(btnLabel)}">${esc(btnLabel)}</button>` : ''}</div>`;
@@ -3231,7 +3336,15 @@ const Dashboard = {
     const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
     const progress = subjectProgress();
     if (!Cache.courses.length) {
-      return emptyState('📘', 'Create your first course to start building your CA study workspace.', 'Create Course', 'Courses.promptNew()');
+      return `<div class="empty-state">
+        <div style="font-size:38px;">📘</div>
+        <h3>Welcome — let's set up your syllabus</h3>
+        <p class="subtle" style="max-width:420px;margin:0 auto 18px;">Organize everything as Course → Subject → Chapter → Topic. You can start from scratch, or load a small worked example first to see how notes, mnemonics, questions, and flashcards all fit together.</p>
+        <div class="note-meta-row" style="justify-content:center;">
+          <button class="btn" onclick="Courses.promptNew()" title="Start with your own course, empty">Create Your First Course</button>
+          <button class="btn secondary" onclick="loadExampleContent()" title="Add one small worked example (a GST topic with a note, mnemonic, question, and flashcards) to explore the app — safe to delete anytime">Explore With an Example</button>
+        </div>
+      </div>`;
     }
     const dateStr = new Date().toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
     const masteredCount = notes.filter(n => n.status === 'mastered').length;
@@ -3311,11 +3424,11 @@ function TopicView(id) {
     <button class="btn sm secondary" onclick="Mnemonics.promptNew('${id}')" title="Create a mnemonic linked to this topic">+ Mnemonic</button>
     <button class="btn sm secondary" onclick="Questions.promptNew('${id}')" title="Add a question linked to this topic">+ Question</button>
   </div>
-  <h3>Notes <span class="subtle" style="font-weight:normal;font-size:12px;">(drag to reorder)</span></h3>
+  <h3>Notes <span class="subtle" style="font-weight:normal;font-size:12px;">(drag, or use ▲▼, to reorder)</span></h3>
   ${notes.length ? notes.map(n => `<div class="list-row" draggable="true"
       ondragstart="Tree.dragStart(event,'note','${n.id}')" ondragover="Tree.allowDrop(event)"
       ondrop="Tree.onDrop(event,'note','notes','topicId','${id}','${n.id}')"
-      onclick="UI.nav('note',{id:'${n.id}'})" title="Open this note"><span>📝</span><div style="flex:1;">${esc(n.title)}</div></div>`).join('') : `<div class="subtle">No notes yet.</div>`}
+      onclick="UI.nav('note',{id:'${n.id}'})" title="Open this note"><span>📝</span><div style="flex:1;">${esc(n.title)}</div><span onclick="event.stopPropagation();">${moveButtonsHTML('notes', 'topicId', id, n.id)}</span></div>`).join('') : `<div class="subtle">No notes yet.</div>`}
   <h3 style="margin-top:18px;">PDFs</h3>
   ${topicPdfs.length ? topicPdfs.map(p => `<div class="list-row" onclick="UI.nav('pdf',{id:'${p.id}'})" title="Open this PDF"><span>📄</span><div style="flex:1;">${esc(p.title)}${p.pageCount ? `<div class="subtle">${p.pageCount} page${p.pageCount === 1 ? '' : 's'}</div>` : ''}</div></div>`).join('') : `<div class="subtle">None yet — click "+ Import PDF" above to add one right here.</div>`}
   <h3 style="margin-top:18px;">Mnemonics</h3>
@@ -3361,8 +3474,8 @@ const Router = {
 };
 
 /* ============================== SEED DEMO DATA ============================== */
-async function seedIfEmpty() {
-  if (Cache.courses.length) return;
+async function loadExampleContent() {
+  if (Cache.courses.length) { toast('Example content is only offered for a brand-new, empty account'); return; }
   const courseId = uid();
   await saveItem('courses', { id: courseId, name: 'CA Intermediate', createdAt: nowISO() });
   const subj = { id: uid(), courseId, name: 'GST', color: '#6b5b3e', createdAt: nowISO() };
@@ -3387,6 +3500,8 @@ async function seedIfEmpty() {
   await Flashcards.generateForMnemonic(mnem);
   await Flashcards.generateForQuestion(q);
   await loadAllToCache();
+  toast('Example content added — explore it, then delete the course whenever you\'re ready to start your own');
+  UI.nav('subjects');
 }
 
 /* ============================== FOCUS MODE (DARK ROOM) ============================== */
@@ -3434,7 +3549,6 @@ async function boot() {
   await DB.open();
   await loadAllToCache();
   STORES.forEach(s => Cache[s] = Cache[s] || []);
-  await seedIfEmpty();
   Theme.apply();
   Tree.render();
   UI.nav('dashboard');

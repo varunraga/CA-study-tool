@@ -15,6 +15,8 @@ Open `index.html` in a browser (double-click it, or host the folder on a static 
 - All of this is written to **IndexedDB**, a real database built into your browser, not just memory. Close the tab, restart your computer, come back next week — it's all still there.
 - The only thing that *doesn't* survive is if you clear your browser's site data for this page, or open it in a private/incognito window and then close it. For anything you can't afford to lose, use **Settings → Export backup** regularly (see §14).
 
+**The very first time you open the app**, with no courses set up yet, you'll get a choice: **Create Your First Course** to start from scratch, or **Explore With an Example** to load one small worked example (a GST topic with a note, mnemonic, question, and flashcards already filled in) so you can see how everything fits together before building your own. The example is completely optional and safe to delete once you've had a look — it's just there to help you get oriented, not something you're required to keep or build on.
+
 ---
 
 ## 2. Building your course structure — the Subjects hub
@@ -35,7 +37,7 @@ Example: `CA Intermediate → GST → Input Tax Credit → Section 16 — Eligib
 4. **Click a chapter** to see its topics (note/mnemonic/question/PDF counts per topic). **"+ Topic"** adds one.
 5. **Click a topic** to open it — that's where you'll add notes, mnemonics, questions, **and now PDFs** for it (§9 below). Its breadcrumb at the top is clickable, so you can jump straight back to the subject or chapter without retracing your steps — and the same clickable breadcrumb now appears when you're inside an individual note or PDF too, so you're never more than one click from any level (topic, chapter, subject, or the Subjects hub itself).
 
-**Reordering**: click and drag any subject card, chapter row, topic row, or note (within its topic) to reorder it. It remembers the order permanently.
+**Reordering**: click and drag any subject card, chapter row, topic row, or note (within its topic) to reorder it — or use the small **▲▼** buttons on each one if you'd rather not drag (grayed out at the top/bottom of its list). Either way, it remembers the order permanently.
 
 **Deleting**: a small **✕** sits on every card and row. Deleting a subject/chapter/topic asks you to confirm first, and tells you exactly how much is inside it. Anything with real content (notes, mnemonics, questions, jargons) is moved to **Trash**, not destroyed — you can restore it later. See §14.
 

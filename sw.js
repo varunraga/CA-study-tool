@@ -2,11 +2,14 @@
 // All actual data lives in IndexedDB, which this worker never touches —
 // updating/replacing these files never affects your saved notes/data.
 //
-// Strategy: network-first for the app shell. When you're online, you
-// always get the latest index.html/app.js straight away; the cache is
-// only a fallback for when you're offline. Bump CACHE_NAME whenever you
+// Strategy: network-first for index.html/app.js — when you're online, you
+// always get the latest code straight away, and the cache is only a
+// fallback for when you're offline. Static assets (icons, manifest) that
+// essentially never change use cache-first with a background refresh
+// instead, since waiting on the network for a file that hasn't changed in
+// months just adds latency for no benefit. Bump CACHE_NAME whenever you
 // deploy a new version so old caches get cleared out automatically.
-const CACHE_NAME = 'castudy-cache-v17';
+const CACHE_NAME = 'castudy-cache-v19';
 const APP_SHELL = [
   './',
   './index.html',
@@ -21,6 +24,12 @@ const APP_SHELL = [
   './icon-192-maskable.png',
   './icon-512-maskable.png'
 ];
+const STATIC_ASSET_NAMES = ['manifest.json', 'sidebar-logo.png', 'favicon-32.png', 'favicon-16.png',
+  'apple-touch-icon.png', 'icon-192.png', 'icon-512.png', 'icon-192-maskable.png', 'icon-512-maskable.png'];
+function isStaticAsset(url) {
+  try { const path = new URL(url).pathname; return STATIC_ASSET_NAMES.some((name) => path.endsWith(name)); }
+  catch (e) { return false; }
+}
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -40,6 +49,26 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
+
+  if (isStaticAsset(event.request.url)) {
+    // Cache-first, refresh in the background — instant response when
+    // available, and the cache quietly catches up for next time if the
+    // asset ever does change (e.g. swapping the logo).
+    event.respondWith(
+      caches.match(event.request).then((cached) => {
+        const fetchAndUpdate = fetch(event.request).then((response) => {
+          if (response && response.status === 200) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+          }
+          return response;
+        }).catch(() => cached);
+        return cached || fetchAndUpdate;
+      })
+    );
+    return;
+  }
+
   event.respondWith(
     fetch(event.request)
       .then((response) => {
