@@ -31,6 +31,13 @@ html.light{
   --shadow-card: 0 1px 2px rgba(20,18,10,.05), 0 10px 26px rgba(20,18,10,.07);
   --glow: 0 0 0 1px rgba(184,134,11,.18), 0 4px 16px rgba(184,134,11,.10);
 }
+html.sepia{
+  --bg:#F1E8D0; --bg-elev:#F8F1DE; --bg-elev-2:#E9DCB8; --border:rgba(80,60,20,.14); --text:#3A2F1D; --text-dim:#7D6C4A;
+  --accent:#9C6B1F; --accent-2:#7A5417; --accent-soft:#E6D3A0; --danger:#A8432E; --danger-soft:#EFD7C6; --danger-ink:#6E2A1B; --ink-on-accent:#241604;
+  --mark-yellow:#E8C34Dcc; --mark-green:#8FCB9Bcc; --mark-blue:#9BC3E0cc; --mark-red:#E4998Bcc; --mark-purple:#CBACE0cc; --mark-orange:#E8AD6Ecc;
+  --shadow-card: 0 1px 2px rgba(58,47,29,.06), 0 10px 26px rgba(58,47,29,.08);
+  --glow: 0 0 0 1px rgba(156,107,31,.18), 0 4px 16px rgba(156,107,31,.10);
+}
 *{box-sizing:border-box;}
 body{margin:0;font-family:var(--sans);background:var(--bg);color:var(--text);font-size:15px;line-height:1.55;}
 h1,h2,h3,.serif{font-family:var(--serif);font-weight:600;}
@@ -170,6 +177,9 @@ textarea{resize:vertical;}
 .editor-body .annot-flag{cursor:pointer;font-size:11px;background:var(--accent);color:var(--ink-on-accent);border-radius:50%;width:15px;height:15px;display:inline-flex;align-items:center;justify-content:center;vertical-align:super;}
 .editor-body blockquote{border-left:3px solid var(--accent);margin:10px 0;padding:2px 14px;color:var(--text-dim);}
 .editor-body table{border-collapse:collapse;width:100%;margin:10px 0;}
+.check-item{display:flex;align-items:flex-start;gap:8px;margin:4px 0;}
+.check-item input[type=checkbox]{margin-top:4px;flex-shrink:0;cursor:pointer;}
+.check-item input[type=checkbox]:checked + span{text-decoration:line-through;opacity:.55;}
 .editor-body td,.editor-body th{border:1px solid var(--border);padding:6px 8px;}
 .save-status{font-family:var(--mono);font-size:11.5px;color:var(--text-dim);}
 .sel-toolbar{position:fixed;background:var(--bg-elev-2);border:1px solid var(--border);color:var(--text);border-radius:9px;padding:4px;display:flex;gap:2px;z-index:50;box-shadow:0 10px 30px rgba(0,0,0,.4);}
@@ -207,6 +217,8 @@ textarea{resize:vertical;}
 #pdfInkCanvas{background:transparent !important;box-shadow:none !important;}
 .pdf-ink-canvas.drawing{pointer-events:auto;cursor:crosshair;touch-action:none;}
 .pdf-draw-toolbar{display:flex;align-items:center;gap:6px;padding:6px 14px;border-bottom:1px solid var(--border);background:var(--accent-soft);flex-wrap:wrap;}
+.pdf-search-bar{display:flex;align-items:center;gap:6px;padding:6px 14px;border-bottom:1px solid var(--border);background:var(--bg-elev-2);flex-wrap:wrap;}
+.pdf-search-bar input{flex:1;min-width:140px;max-width:320px;padding:5px 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:13px;}
 .pdf-draw-toolbar button{background:none;border:1px solid transparent;border-radius:6px;padding:5px 9px;font-size:13px;color:var(--text);}
 .pdf-draw-toolbar button:hover{background:var(--bg-elev);}
 .pdf-draw-toolbar button.active-tool{background:var(--accent);color:var(--ink-on-accent);}
@@ -291,6 +303,7 @@ body.focus-mode .content { max-width: 780px; margin: 0 auto; padding-top: 50px; 
     </div>
     <div class="sidebar-section">
       <button class="nav-item" data-route="dashboard" onclick="UI.nav('dashboard')" title="Today's overview: study time, revision due, recent notes">🏠 Dashboard</button>
+      <button class="nav-item" data-route="inbox" onclick="UI.nav('inbox')" title="Quick-captured stray thoughts, not yet filed into a topic">📥 Inbox <span class="badge" id="inboxBadge">0</span></button>
       <button class="nav-item nav-item-featured" data-route="subjects" onclick="UI.nav('subjects')" title="Your whole syllabus — subjects, chapters and topics, browsable and color-coded">📚 Subjects</button>
       <button class="nav-item" data-route="search" onclick="UI.nav('search')" title="Full search with filters by type, subject and sort order">🔍 Search &amp; Filters</button>
       <button class="nav-item" data-route="analytics" onclick="UI.nav('analytics')" title="Streaks, weak/strong topics, and subject breakdown">📊 Analytics</button>

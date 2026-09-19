@@ -231,18 +231,17 @@ function toast(msg) {
 /* ============================== DB ============================== */
 const STORES = ['courses', 'subjects', 'chapters', 'topics', 'notes', 'pdfs', 'pdfBookmarks',
   'annotations', 'mnemonics', 'jargons', 'questions', 'flashcards', 'bookmarks',
-  'studySessions', 'settings', 'trash', 'noteVersions', 'tombstones'];
+  'studySessions', 'settings', 'trash', 'noteVersions', 'tombstones', 'quickCaptures'];
 
 const DB = (() => {
   let db;
   function open() {
     return new Promise((resolve, reject) => {
-      // v3 adds the tombstones store (records of intentionally-deleted items,
-      // so Drive sync's merge step never resurrects something you deleted —
-      // see recordTombstone()). onupgradeneeded fires for both brand-new
-      // browsers and anyone upgrading from an earlier version, and just
-      // creates whatever stores are missing — existing data is untouched.
-      const req = indexedDB.open('castudy', 3);
+      // v4 adds the quickCaptures store (unfiled quick-capture jottings — see
+      // QuickCapture). onupgradeneeded fires for both brand-new browsers and
+      // anyone upgrading from an earlier version, and just creates whatever
+      // stores are missing — existing data is untouched.
+      const req = indexedDB.open('castudy', 4);
       req.onupgradeneeded = (e) => {
         const d = e.target.result;
         STORES.forEach(name => {
@@ -335,6 +334,7 @@ const Settings = {
   defaults: {
     theme: 'dark',
     fontSize: 'md',
+    listDensity: 'comfortable',
     revisionIntervals: [1, 3, 7, 14, 30],
     googleClientId: EMBEDDED_GOOGLE_CLIENT_ID,
     highlightColors: [
@@ -359,6 +359,7 @@ const Theme = {
   apply() {
     const t = Settings.get('theme');
     document.documentElement.classList.toggle('light', t === 'light');
+    document.documentElement.classList.toggle('sepia', t === 'sepia');
   },
   toggle() {
     const cur = Settings.get('theme');
@@ -818,6 +819,44 @@ function topicSubjectId(topicId) {
   const c = t ? (Cache.chapters || []).find(x => x.id === t.chapterId) : null;
   return c ? c.subjectId : '';
 }
+function flashcardSubjectId(f) {
+  // Manual flashcards carry their own subjectId; auto-generated ones (from a
+  // question or mnemonic) resolve it through their source.
+  if (f.subjectId) return f.subjectId;
+  if (f.sourceType === 'question') {
+    const q = (Cache.questions || []).find(x => x.id === f.sourceId);
+    return q ? q.subjectId : '';
+  }
+  if (f.sourceType === 'mnemonic') {
+    const m = (Cache.mnemonics || []).find(x => x.id === f.sourceId);
+    return m ? topicSubjectId(m.topicId) : '';
+  }
+  return '';
+}
+// Round-robins items across subject groups instead of leaving them blocked
+// together — interleaved practice (mixing subjects in one sitting) beats
+// blocked practice for retention. subjectIdFn returns the grouping key for
+// each item; items within a group are shuffled too, so repeat sessions vary.
+function interleaveBySubject(items, subjectIdFn) {
+  const groups = new Map();
+  items.forEach(it => {
+    const key = subjectIdFn(it) || '_unknown';
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(it);
+  });
+  groups.forEach(arr => arr.sort(() => Math.random() - 0.5));
+  const keys = Array.from(groups.keys()).sort(() => Math.random() - 0.5);
+  const result = [];
+  let more = true;
+  while (more) {
+    more = false;
+    for (const k of keys) {
+      const arr = groups.get(k);
+      if (arr.length) { result.push(arr.shift()); more = true; }
+    }
+  }
+  return result;
+}
 function subjectOptions(selected) {
   return (Cache.subjects || []).map(s => `<option value="${s.id}" ${s.id === selected ? 'selected' : ''}>${esc(s.name)}</option>`).join('');
 }
@@ -843,7 +882,7 @@ const Revision = {
     // scheduled date arrives — and also the very first time, since a flashcard
     // has no separate detail page to rate it from the way a note does.
     (Cache.flashcards || []).forEach(f => { if (f.nextDate == null || isPastOrToday(f.nextDate)) items.push({ type: 'flashcard', obj: f }); });
-    return items;
+    return interleaveBySubject(items, d => d.type === 'note' ? d.obj.subjectId : flashcardSubjectId(d.obj));
   },
   async rate(type, id, rating) {
     // rating: again|hard|good|easy
@@ -896,6 +935,38 @@ const Flashcards = {
     await DB.del('flashcards', fc.id);
     Cache.flashcards = Cache.flashcards.filter(f => f.id !== fc.id);
     await recordTombstone('flashcards', fc.id);
+  },
+  promptNew(topicId) {
+    Modal.open('New Flashcard', `
+      <label>Front (question / prompt)</label>
+      <textarea id="mFcFront" rows="2" placeholder="What do you want to be asked?" title="Flashcard front"></textarea>
+      <label>Back (answer)</label>
+      <textarea id="mFcBack" rows="3" placeholder="What's the answer?" title="Flashcard back"></textarea>
+      <div class="modal-actions"><button class="btn secondary" onclick="Modal.close()" title="Discard and close this dialog">Cancel</button>
+      <button class="btn" onclick="Flashcards.saveNew('${topicId || ''}')" title="Save this flashcard">Save</button></div>`);
+    setTimeout(() => document.getElementById('mFcFront')?.focus(), 50);
+  },
+  async saveNew(topicId) {
+    const front = document.getElementById('mFcFront').value.trim();
+    const back = document.getElementById('mFcBack').value.trim();
+    if (!front || !back) { toast('Both front and back are needed'); return; }
+    const topic = topicId ? (Cache.topics || []).find(t => t.id === topicId) : null;
+    const chapter = topic ? (Cache.chapters || []).find(c => c.id === topic.chapterId) : null;
+    await saveItem('flashcards', {
+      id: uid(), front, back, sourceType: 'manual', sourceId: null,
+      topicId: topicId || '', chapterId: chapter?.id || '', subjectId: chapter?.subjectId || '',
+      stage: -1, nextDate: null, createdAt: nowISO()
+    });
+    Modal.close();
+    toast('Flashcard added — it\'ll show up next time revision is due');
+    Router.render();
+  },
+  async deleteManual(id) {
+    if (!confirm('Delete this flashcard?')) return;
+    await DB.del('flashcards', id);
+    Cache.flashcards = Cache.flashcards.filter(f => f.id !== id);
+    await recordTombstone('flashcards', id);
+    Router.render();
   }
 };
 
@@ -968,22 +1039,25 @@ const Notes = {
           <div class="sep"></div>
           <button onclick="document.execCommand('insertUnorderedList')" title="Bullet list">• List</button>
           <button onclick="document.execCommand('insertOrderedList')" title="Numbered list">1. List</button>
+          <button onclick="Notes.insertChecklist('${id}')" title="Insert a checklist item — click again for more">☑ Checklist</button>
           <button onclick="document.execCommand('formatBlock',false,'BLOCKQUOTE')" title="Quote block — for asides or exact wording">❝ Quote</button>
           <button onclick="document.execCommand('insertHorizontalRule')" title="Horizontal rule — divides the note into sections">―</button>
           <div class="sep"></div>
           <button onclick="Notes.insertTable('${id}')" title="Insert a 2×2 table">▦ Table</button>
           <button onclick="Notes.insertLink()" title="Turn selected text into a link">🔗 Link</button>
+          <button onclick="Notes.promptTemplate('${id}')" title="Insert a ready-made structure — case law summary, amendment tracker, or rates table">📋 Template</button>
           <div class="sep"></div>
           <button onclick="Focus.enter()" title="Focus Mode — hide the sidebar and menus for distraction-free writing (Esc to exit)">🕶 Focus</button>
         </div>
         <div class="editor-body" id="editorBody" contenteditable="true" aria-label="Note content"
-             oninput="Notes.onEdit('${id}')" onmouseup="Notes.onSelect(event,'${id}')" onkeyup="Notes.onSelect(event,'${id}')">${note.content}</div>
+             oninput="Notes.onEdit('${id}')" onmouseup="Notes.onSelect(event,'${id}')" onkeyup="Notes.onSelect(event,'${id}')" onpaste="Notes.handlePaste(event,'${id}')">${note.content}</div>
         <div class="save-status" id="saveStatus">Saved</div>
       </div>
       <div class="inspector">
         <div class="block">
           <h4>Highlight legend</h4>
           ${colors.map(c => `<span class="tag" style="border-color:${c.color}"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${c.color};margin-right:4px;"></span>${c.label}</span>`).join('')}
+          <button class="btn sm secondary" style="margin-top:8px;" onclick="Cloze.start('${id}')" title="Turn this note's highlights into fill-in-the-blank recall cards">📇 Cloze Review</button>
         </div>
         <div class="block">
           <h4>Annotations (${annots.length})</h4>
@@ -1132,6 +1206,91 @@ const Notes = {
   },
   insertTable() {
     document.execCommand('insertHTML', false, `<table><tr><td>Cell</td><td>Cell</td></tr><tr><td>Cell</td><td>Cell</td></tr></table><p><br></p>`);
+  },
+  insertChecklist(id) {
+    document.execCommand('insertHTML', false, `<div class="check-item" contenteditable="false"><input type="checkbox" onclick="Notes.toggleCheckItem(this,'${id}')" aria-label="Checklist item"><span contenteditable="true">New item</span></div><p><br></p>`);
+  },
+  toggleCheckItem(checkbox, id) {
+    // Sync the checked ATTRIBUTE (not just the live property) so the state
+    // actually survives being serialized into innerHTML and saved — a
+    // checkbox's checked property alone doesn't round-trip through HTML
+    // string serialization.
+    if (checkbox.checked) checkbox.setAttribute('checked', 'checked');
+    else checkbox.removeAttribute('checked');
+    Notes.onEdit(id);
+  },
+  templates: {
+    caselaw: `<h3>Case: [Case Name]</h3><p><b>Citation:</b> </p><p><b>Facts:</b> </p><p><b>Issue:</b> </p><p><b>Holding:</b> </p><p><b>Ratio / Principle:</b> </p><p><br></p>`,
+    amendment: `<h3>Amendment: [Section / Rule]</h3><table><tr><td><b>Before</b></td><td><b>After</b></td></tr><tr><td> </td><td> </td></tr></table><p><b>Effective from:</b> </p><p><b>Why it matters:</b> </p><p><br></p>`,
+    rates: `<h3>[Topic] — Rates / Thresholds</h3><table><tr><td><b>Item</b></td><td><b>Rate / Limit</b></td></tr><tr><td> </td><td> </td></tr><tr><td> </td><td> </td></tr></table><p><br></p>`,
+  },
+  promptTemplate(noteId) {
+    // Capture the live cursor position before the modal steals focus, the
+    // same way Notes.annotate() does — but only if it's actually inside this
+    // editor, so a stray selection elsewhere on the page isn't reused.
+    const editor = document.getElementById('editorBody');
+    const sel = window.getSelection();
+    let range = null;
+    if (sel && sel.rangeCount) {
+      const r = sel.getRangeAt(0);
+      if (editor && editor.contains(r.commonAncestorContainer)) range = r.cloneRange();
+    }
+    Notes._pendingTemplateRange = range;
+    Modal.open('Insert Template', `
+      <p class="subtle">Choose a starting structure — it's inserted at your cursor, or at the end if nothing was selected.</p>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <button class="btn secondary" onclick="Notes.insertTemplate('${noteId}','caselaw')" title="Citation, facts, issue, holding, ratio">📜 Case Law Summary</button>
+        <button class="btn secondary" onclick="Notes.insertTemplate('${noteId}','amendment')" title="Section-wise before/after amendment tracker">📝 Amendment Tracker</button>
+        <button class="btn secondary" onclick="Notes.insertTemplate('${noteId}','rates')" title="A table for rates, thresholds, or limits">📊 Rates / Thresholds Table</button>
+      </div>
+      <div class="modal-actions" style="margin-top:10px;"><button class="btn secondary" onclick="Modal.close()" title="Cancel">Cancel</button></div>`);
+  },
+  insertTemplate(noteId, key) {
+    Modal.close();
+    const html = this.templates[key];
+    if (!html) return;
+    const editor = document.getElementById('editorBody');
+    if (!editor) return;
+    editor.focus();
+    const sel = window.getSelection();
+    const range = Notes._pendingTemplateRange;
+    if (range) { sel.removeAllRanges(); sel.addRange(range); }
+    else { const r = document.createRange(); r.selectNodeContents(editor); r.collapse(false); sel.removeAllRanges(); sel.addRange(r); }
+    document.execCommand('insertHTML', false, html);
+    Notes.onEdit(noteId);
+  },
+  // Pasted images are downscaled and re-encoded before embedding — a raw
+  // phone photo can be several MB as base64, which would bloat every future
+  // sync and IndexedDB read of the note. 1000px wide / JPEG-82% keeps it
+  // legible while staying reasonable to store.
+  handlePaste(e, noteId) {
+    const items = e.clipboardData && e.clipboardData.items;
+    if (!items) return;
+    let imageItem = null;
+    for (let i = 0; i < items.length; i++) { if (items[i].type && items[i].type.indexOf('image/') === 0) { imageItem = items[i]; break; } }
+    if (!imageItem) return; // not an image — let normal text/HTML paste proceed
+    e.preventDefault();
+    const file = imageItem.getAsFile();
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        const maxW = 1000;
+        const scale = Math.min(1, maxW / img.width);
+        const w = Math.max(1, Math.round(img.width * scale));
+        const h = Math.max(1, Math.round(img.height * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+        document.execCommand('insertHTML', false, `<img src="${dataUrl}" style="max-width:100%;border-radius:8px;margin:6px 0;" alt="pasted image"><p><br></p>`);
+        Notes.onEdit(noteId);
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
   },
   insertLink() {
     const url = prompt('URL?'); if (url) document.execCommand('createLink', false, url);
@@ -1309,6 +1468,9 @@ const Jargons = {
 
 /* ============================== QUESTIONS ============================== */
 const Questions = {
+  compactOpenIds: new Set(),
+  selectMode: false,
+  selectedIds: new Set(),
   promptNew(topicId) {
     Modal.open('New Question', `
       <label>Question</label><textarea id="qText" rows="3"></textarea>
@@ -1380,11 +1542,41 @@ const Questions = {
     if (!items.length) return emptyState('❓', 'Build your question bank from past papers and practice.', 'Add Question', "Questions.promptNew()");
     const shown = items.slice(0, this.visibleCount);
     const remaining = items.length - shown.length;
+    const compact = Settings.get('listDensity') === 'compact';
+    const densityBtn = `<button class="btn sm secondary" onclick="Settings.set('listDensity','${compact ? 'comfortable' : 'compact'}').then(()=>Router.render())" title="${compact ? 'Switch to a roomier, fully-expanded view' : 'Switch to a denser view that fits more questions on screen'}">${compact ? '▥ Comfortable' : '▤ Compact'}</button>`;
+    const selectBtn = `<button class="btn sm secondary" onclick="Questions.toggleSelectMode()" title="${this.selectMode ? 'Exit multi-select' : 'Select multiple questions to move or delete together'}">${this.selectMode ? '✕ Cancel Select' : '☑ Select'}</button>`;
+    const bulkBar = this.selectMode && this.selectedIds.size ? `<div class="card" style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+      <b>${this.selectedIds.size} selected</b>
+      <div class="note-meta-row">
+        <select id="qBulkMoveTopic" title="Move all selected questions to this topic"><option value="">Move to topic…</option>${topicOptions()}</select>
+        <button class="btn sm secondary" onclick="Questions.bulkMove()" title="Move all selected questions to the chosen topic">Move</button>
+        <button class="btn sm danger" onclick="Questions.bulkDelete()" title="Delete all selected questions">Delete selected</button>
+      </div>
+    </div>` : '';
     return `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
-      <h2 style="margin:0;">Questions (${items.length})</h2><button class="btn" onclick="Questions.promptNew()" title="Add a question to your question bank">+ New Question</button></div>
-      ${shown.map(q => { const fc = Flashcards.findFor('question', q.id); return `<div class="card" style="margin-bottom:10px;">
+      <h2 style="margin:0;">Questions (${items.length})</h2>
+      <div class="note-meta-row">${densityBtn}${selectBtn}<button class="btn" onclick="Questions.promptNew()" title="Add a question to your question bank">+ New Question</button></div></div>
+      ${bulkBar}
+      ${shown.map(q => { const fc = Flashcards.findFor('question', q.id);
+        const checkbox = this.selectMode ? `<input type="checkbox" ${this.selectedIds.has(q.id) ? 'checked' : ''} onclick="event.stopPropagation();Questions.toggleSelect('${q.id}')" style="margin-right:8px;flex-shrink:0;" title="Select this question">` : '';
+        if (compact) {
+          return `<details class="list-row" style="display:block;padding:8px 12px;margin-bottom:4px;" ${Questions.compactOpenIds.has(q.id) ? 'open' : ''} ontoggle="if(this.open)Questions.compactOpenIds.add('${q.id}');else Questions.compactOpenIds.delete('${q.id}')">
+            <summary style="cursor:pointer;display:flex;justify-content:space-between;gap:10px;align-items:center;list-style:none;">
+              ${checkbox}<span style="flex:1;">${esc(q.questionText)}</span>
+              <span class="pill" style="flex-shrink:0;">${q.marks}m</span>
+              <span class="pill ${q.status === 'not-attempted' ? '' : 'warn'}" style="flex-shrink:0;">${esc(q.status)}</span>
+            </summary>
+            <div style="margin-top:8px;">
+              <div class="note-meta-row"><span class="pill">${esc(q.type)}</span><span class="pill">${esc(q.difficulty)}</span><span class="subtle">${subjectName(q.subjectId)}</span></div>
+              <div class="subtle" style="margin-top:4px;">🃏 ${fc && fc.nextDate ? 'Next revision: ' + fmtDateShort(fc.nextDate) : 'Flashcard not yet reviewed'}</div>
+              ${Questions.answerAreaHTML(q)}
+              <div id="ans-${q.id}" style="display:none;margin-top:8px;padding:8px;background:var(--bg);border-radius:8px;">${esc(q.modelAnswer) || '<span class="subtle">No model answer recorded.</span>'}</div>
+            </div>
+          </details>`;
+        }
+        return `<div class="card" style="margin-bottom:10px;">
         <div style="display:flex;justify-content:space-between;gap:10px;">
-          <div>${esc(q.questionText)}</div>
+          <div style="display:flex;">${checkbox}<div>${esc(q.questionText)}</div></div>
           <span class="pill">${q.marks} marks</span>
         </div>
         <div class="note-meta-row" style="margin-top:8px;">
@@ -1449,7 +1641,37 @@ const Questions = {
     Questions.setStatus(id, correct ? 'correct' : 'incorrect');
     toast(correct ? '✅ Correct!' : `❌ Correct answer: ${q.correctAnswerText}`);
   },
-  toggleAnswer(id) { const el = document.getElementById('ans-' + id); el.style.display = el.style.display === 'none' ? 'block' : 'none'; }
+  toggleAnswer(id) { const el = document.getElementById('ans-' + id); el.style.display = el.style.display === 'none' ? 'block' : 'none'; },
+  toggleSelectMode() { this.selectMode = !this.selectMode; if (!this.selectMode) this.selectedIds.clear(); Router.render(); },
+  toggleSelect(id) { if (this.selectedIds.has(id)) this.selectedIds.delete(id); else this.selectedIds.add(id); Router.render(); },
+  async bulkMove() {
+    const topicId = document.getElementById('qBulkMoveTopic').value;
+    if (!topicId) { toast('Pick a topic first'); return; }
+    const topic = (Cache.topics || []).find(t => t.id === topicId);
+    const chapter = topic ? (Cache.chapters || []).find(c => c.id === topic.chapterId) : null;
+    const ids = Array.from(this.selectedIds);
+    for (const id of ids) {
+      const q = Cache.questions.find(x => x.id === id);
+      if (!q) continue;
+      q.topicId = topicId; q.chapterId = chapter?.id; q.subjectId = chapter?.subjectId;
+      await saveItem('questions', q);
+    }
+    toast(`Moved ${ids.length} question${ids.length === 1 ? '' : 's'} to ${topic?.name || 'the topic'}`);
+    this.selectedIds.clear(); this.selectMode = false;
+    Router.render();
+  },
+  async bulkDelete() {
+    const ids = Array.from(this.selectedIds);
+    if (!ids.length) return;
+    if (!confirm(`Delete ${ids.length} question${ids.length === 1 ? '' : 's'}? Their flashcards will be removed too. This can't be undone.`)) return;
+    for (const id of ids) {
+      await Flashcards.removeForSource('question', id);
+      await trashItem('questions', id);
+    }
+    toast(`Deleted ${ids.length} question${ids.length === 1 ? '' : 's'}`);
+    this.selectedIds.clear(); this.selectMode = false;
+    Router.render();
+  }
 };
 
 /* ============================== BOOKMARKS ============================== */
@@ -1478,6 +1700,10 @@ const Bookmarks = {
 let pdfDocCache = null, pdfCurrentPage = 1, pdfScale = 1.2, pdfPageObj = null, pdfStickyMode = false, pdfSplitMode = false, pdfSplitNoteId = null;
 let pdfDrawMode = false, pdfDrawTool = 'pen', pdfDrawColor = '#202A22', pdfDrawing = false, pdfDrawStart = null, pdfCurrentStroke = [];
 let pdfReadMode = false; // minimal whole-screen reading view — no right panel, stripped-down toolbar
+let pdfPageTextCache = {}; // page number -> extracted text, so repeated searches in one session don't re-extract
+let pdfSearchResults = []; // page numbers containing the current search query, in order
+let pdfSearchIndex = -1;
+let pdfSearchQuery = '';
 let pdfUndoStack = [], pdfRedoStack = []; // unified undo/redo across highlights, underlines, sticky notes and drawings for the current PDF
 
 /* Minimal selectable text layer, built the same way pdf.js's own viewer does:
@@ -1561,15 +1787,24 @@ const Pdfs = {
     const items = Cache.pdfs || [];
     const shown = items.slice(0, this.libraryVisibleCount);
     const remaining = items.length - shown.length;
+    const compact = Settings.get('listDensity') === 'compact';
+    const densityBtn = `<button class="btn sm secondary" onclick="Settings.set('listDensity','${compact ? 'comfortable' : 'compact'}').then(()=>Router.render())" title="${compact ? 'Switch to a roomier card grid' : 'Switch to a denser list that fits more PDFs on screen'}">${compact ? '▥ Comfortable' : '▤ Compact'}</button>`;
     return `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
       <h2 style="margin:0;">PDF Library${items.length ? ` (${items.length})` : ''}</h2>
-      <div><button class="btn" onclick="Pdfs.upload()" title="Choose a PDF file to upload">+ Import PDF</button></div></div>
-      ${items.length ? `<div class="grid cols-3">${shown.map(p => `
+      <div class="note-meta-row">${densityBtn}${items.length >= 2 ? `<button class="btn sm secondary" onclick="Pdfs.promptMerge()" title="Combine two PDFs from your library into one new PDF">🔗 Merge PDFs</button>` : ''}<button class="btn" onclick="Pdfs.upload()" title="Choose a PDF file to upload">+ Import PDF</button></div></div>
+      ${items.length ? (compact
+        ? shown.map(p => `<div class="list-row" onclick="UI.nav('pdf',{id:'${p.id}'})" title="Open this PDF">
+            <span>📄</span><div style="flex:1;">${esc(p.title)}</div>
+            <span class="subtle">${p.pageCount || '?'} pages</span>
+            <button class="btn sm secondary" onclick="event.stopPropagation();Pdfs.remove('${p.id}')" title="Move this PDF to Trash">Delete</button>
+          </div>`).join('')
+        : `<div class="grid cols-3">${shown.map(p => `
       <div class="card" style="cursor:pointer;" onclick="UI.nav('pdf',{id:'${p.id}'})" title="Open this PDF">
         <div style="font-size:32px;">📄</div><b>${esc(p.title)}</b>
         <div class="subtle">${p.pageCount || '?'} pages</div>
         <div style="text-align:right;margin-top:8px;"><button class="btn sm secondary" onclick="event.stopPropagation();Pdfs.remove('${p.id}')" title="Move this PDF to Trash">Delete</button></div>
-      </div>`).join('')}</div>${remaining > 0 ? `<button class="btn sm secondary" style="margin-top:16px;" onclick="Pdfs.libraryVisibleCount+=50;Router.render();" title="Show more PDFs">Show ${Math.min(remaining, 50)} more (${remaining} remaining)</button>` : ''}` : emptyState('📄', 'No PDFs yet.', 'Import PDF', 'Pdfs.upload()')}`;
+      </div>`).join('')}</div>`
+      ) + (remaining > 0 ? `<button class="btn sm secondary" style="margin-top:16px;" onclick="Pdfs.libraryVisibleCount+=50;Router.render();" title="Show more PDFs">Show ${Math.min(remaining, 50)} more (${remaining} remaining)</button>` : '') : emptyState('📄', 'No PDFs yet.', 'Import PDF', 'Pdfs.upload()')}`;
   },
   async renderViewer(id) {
     const rec = Cache.pdfs.find(p => p.id === id);
@@ -1577,6 +1812,7 @@ const Pdfs = {
     setTimeout(() => Pdfs.load(id), 30);
     pdfSplitMode = false; pdfSplitNoteId = null; pdfDrawMode = false; pdfDrawTool = 'pen'; pdfDrawColor = '#202A22';
     pdfReadMode = false;
+    pdfPageTextCache = {}; pdfSearchResults = []; pdfSearchIndex = -1; pdfSearchQuery = '';
     pdfUndoStack = []; pdfRedoStack = [];
     const drawColors = ['#202A22', '#A23B2E', '#A9822E', '#2f6fc9', '#3f8a53'];
     const crumbInner = rec.subjectId
@@ -1604,10 +1840,12 @@ const Pdfs = {
         <button class="icon-btn" onclick="Pdfs.nextPage()" title="Next page">Next ›</button>
         <button class="icon-btn" onclick="Pdfs.zoom(-0.15)" title="Zoom out" aria-label="Zoom out">−</button>
         <button class="icon-btn" onclick="Pdfs.zoom(0.15)" title="Zoom in" aria-label="Zoom in">+</button>
+        <button class="icon-btn" onclick="Pdfs.toggleSearchBar()" title="Find text anywhere in this PDF">🔍 Find</button>
         <button class="icon-btn" id="pdfReadModeBtn" onclick="Pdfs.toggleReadMode()" title="${pdfReadMode ? 'Exit whole-screen reading view and return to the full editor' : 'Switch to a distraction-free, whole-screen reading view with just the essentials'}">${pdfReadMode ? '⛶ Exit Full Screen' : '⛶ Full Screen'}</button>
         <button class="icon-btn pdf-edit-only" id="pdfUndoBtn" onclick="Pdfs.undo()" title="Undo the last highlight, underline, sticky note or drawing" disabled>↶ Undo</button>
         <button class="icon-btn pdf-edit-only" id="pdfRedoBtn" onclick="Pdfs.redo()" title="Redo" disabled>↷ Redo</button>
         <button class="icon-btn pdf-edit-only" onclick="Pdfs.bookmarkPage('${id}')" title="Bookmark this page for quick return">🔖 Bookmark page</button>
+        <button class="icon-btn pdf-edit-only" onclick="Pdfs.promptExtractPages('${id}')" title="Split a page range out of this PDF into a new standalone PDF">✂ Extract Pages</button>
         <button class="icon-btn" id="stickyBtn" onclick="Pdfs.toggleStickyMode()" title="Click a spot on the page to drop a sticky note there">📌 Sticky note</button>
         <button class="icon-btn pdf-edit-only" id="drawBtn" onclick="Pdfs.toggleDrawMode()" title="Draw freehand ink, an arrow, or a rectangle on this page">✏ Draw</button>
         <button class="icon-btn pdf-edit-only" id="splitBtn" onclick="Pdfs.toggleSplit()" title="Dock a note editor beside the PDF, for taking notes while you read">📝 Split with Notes</button>
@@ -1623,6 +1861,14 @@ const Pdfs = {
         <div class="sep"></div>
         <button onclick="Pdfs.clearPageDrawings()" title="Remove all drawings on this page">🗑 Clear page</button>
         <button class="btn sm" onclick="Pdfs.toggleDrawMode()" title="Exit drawing mode">Done</button>
+      </div>
+      <div class="pdf-search-bar" id="pdfSearchBar" style="display:none;">
+        <input type="text" id="pdfSearchInput" placeholder="Find text in this PDF…" onkeydown="if(event.key==='Enter')Pdfs.runSearch()" title="Find text in this PDF">
+        <button class="btn sm" onclick="Pdfs.runSearch()" title="Search every page for this text">Search</button>
+        <button class="icon-btn" onclick="Pdfs.searchPrev()" title="Previous matching page">‹</button>
+        <button class="icon-btn" onclick="Pdfs.searchNext()" title="Next matching page">›</button>
+        <span id="pdfSearchStatus" class="subtle"></span>
+        <button class="icon-btn" onclick="Pdfs.toggleSearchBar()" title="Close search" aria-label="Close search">✕</button>
       </div>
       <div class="pdf-body-row">
         <div class="pdf-canvas-wrap" id="pdfCanvasWrap">
@@ -1691,6 +1937,68 @@ const Pdfs = {
   },
   prevPage() { if (pdfCurrentPage > 1) { pdfCurrentPage--; Pdfs.renderPage(); } },
   nextPage() { if (pdfDocCache && pdfCurrentPage < pdfDocCache.numPages) { pdfCurrentPage++; Pdfs.renderPage(); } },
+  gotoPage(n) {
+    if (!pdfDocCache || n < 1 || n > pdfDocCache.numPages) return;
+    pdfCurrentPage = n;
+    Pdfs.renderPage();
+  },
+  toggleSearchBar() {
+    const bar = document.getElementById('pdfSearchBar');
+    if (!bar) return;
+    const willShow = bar.style.display === 'none';
+    bar.style.display = willShow ? 'flex' : 'none';
+    if (willShow) {
+      setTimeout(() => document.getElementById('pdfSearchInput')?.focus(), 50);
+    } else {
+      pdfSearchResults = []; pdfSearchIndex = -1; pdfSearchQuery = '';
+    }
+  },
+  async getPageText(pageNum) {
+    // Cached per PDF-viewing session — extracting text is the slow part,
+    // so a repeated or refined search on the same document doesn't redo it.
+    if (pdfPageTextCache[pageNum] != null) return pdfPageTextCache[pageNum];
+    const page = await pdfDocCache.getPage(pageNum);
+    const textContent = await page.getTextContent();
+    const text = textContent.items.map((it) => it.str).join(' ');
+    pdfPageTextCache[pageNum] = text;
+    return text;
+  },
+  async runSearch() {
+    const input = document.getElementById('pdfSearchInput');
+    const query = input ? input.value.trim() : '';
+    const status = document.getElementById('pdfSearchStatus');
+    if (!query || !pdfDocCache) { pdfSearchResults = []; pdfSearchIndex = -1; if (status) status.textContent = ''; return; }
+    pdfSearchQuery = query;
+    if (status) status.textContent = 'Searching…';
+    const needle = query.toLowerCase();
+    const results = [];
+    for (let i = 1; i <= pdfDocCache.numPages; i++) {
+      const text = await Pdfs.getPageText(i);
+      if (text.toLowerCase().includes(needle)) results.push(i);
+    }
+    pdfSearchResults = results;
+    pdfSearchIndex = results.length ? 0 : -1;
+    Pdfs.updateSearchStatus();
+    if (results.length) Pdfs.gotoPage(results[0]);
+    else toast('No matches found in this PDF');
+  },
+  updateSearchStatus() {
+    const status = document.getElementById('pdfSearchStatus');
+    if (!status) return;
+    status.textContent = pdfSearchResults.length ? `Page ${pdfSearchResults[pdfSearchIndex]} — match ${pdfSearchIndex + 1} of ${pdfSearchResults.length}` : (pdfSearchQuery ? 'No matches' : '');
+  },
+  searchNext() {
+    if (!pdfSearchResults.length) return;
+    pdfSearchIndex = (pdfSearchIndex + 1) % pdfSearchResults.length;
+    Pdfs.updateSearchStatus();
+    Pdfs.gotoPage(pdfSearchResults[pdfSearchIndex]);
+  },
+  searchPrev() {
+    if (!pdfSearchResults.length) return;
+    pdfSearchIndex = (pdfSearchIndex - 1 + pdfSearchResults.length) % pdfSearchResults.length;
+    Pdfs.updateSearchStatus();
+    Pdfs.gotoPage(pdfSearchResults[pdfSearchIndex]);
+  },
   goToPage(n) { pdfCurrentPage = n; Pdfs.renderPage(); },
   zoom(delta) { pdfScale = Math.max(0.4, Math.min(3, pdfScale + delta)); Pdfs.renderPage(); },
   async bookmarkPage(pdfId) {
@@ -2105,6 +2413,103 @@ const Pdfs = {
     }
   },
 
+  /* ---- page-range extraction & merging ----
+     Both use pdf-lib's copyPages to build a brand-new PDFDocument from
+     pages of existing ones — the originals in the library are never
+     touched, and the result is saved as its own new library entry (same
+     shape as a freshly-imported PDF) rather than just downloaded, so it
+     slots straight into your topic structure like any other PDF. */
+  promptExtractPages(pdfId) {
+    const rec = (Cache.pdfs || []).find(p => p.id === pdfId);
+    if (!rec) return;
+    const total = rec.pageCount || 1;
+    const current = pdfCurrentPage || 1;
+    Modal.open('Extract Pages', `
+      <p class="subtle">Pulls this page range out of "${esc(rec.title)}" (${total} pages) into its own new PDF in your library.</p>
+      <label>From page</label><input type="number" id="mExtractFrom" min="1" max="${total}" value="${current}" title="First page to include (1-indexed)">
+      <label>To page</label><input type="number" id="mExtractTo" min="1" max="${total}" value="${current}" title="Last page to include, inclusive">
+      <label>New title</label><input type="text" id="mExtractTitle" value="${esc(rec.title)} (p.${current})" title="Title for the new extracted PDF">
+      <div class="modal-actions"><button class="btn secondary" onclick="Modal.close()" title="Cancel">Cancel</button>
+      <button class="btn" onclick="Pdfs.doExtractPages('${pdfId}')" title="Create the new PDF">Extract</button></div>`);
+  },
+  async doExtractPages(pdfId) {
+    const rec = await DB.get('pdfs', pdfId);
+    if (!rec || !rec.blob) { toast('Could not find this PDF\'s content'); return; }
+    if (typeof PDFLib === 'undefined') { toast('The PDF library failed to load — check your connection and try again'); return; }
+    const total = rec.pageCount || 1;
+    const from = parseInt(document.getElementById('mExtractFrom').value) || 1;
+    const to = parseInt(document.getElementById('mExtractTo').value) || from;
+    const title = document.getElementById('mExtractTitle').value.trim() || `${rec.title} (extract)`;
+    const lo = Math.max(1, Math.min(from, to)), hi = Math.min(total, Math.max(from, to));
+    if (lo > total || hi < 1) { toast('That page range is outside this PDF'); return; }
+    Modal.close();
+    toast('Extracting pages…');
+    try {
+      const { PDFDocument } = PDFLib;
+      const srcDoc = await PDFDocument.load(rec.blob.slice(0));
+      const indices = []; for (let i = lo; i <= hi; i++) indices.push(i - 1);
+      const newDoc = await PDFDocument.create();
+      const copied = await newDoc.copyPages(srcDoc, indices);
+      copied.forEach(p => newDoc.addPage(p));
+      const bytes = await newDoc.save();
+      await saveItem('pdfs', {
+        id: uid(), filename: `${slugify(title)}.pdf`, title,
+        subjectId: rec.subjectId, chapterId: rec.chapterId, topicId: rec.topicId,
+        pageCount: indices.length, blob: bytes, createdAt: nowISO()
+      });
+      toast(`Extracted ${indices.length} page${indices.length === 1 ? '' : 's'} into a new PDF`);
+      Router.render();
+    } catch (e) {
+      console.warn('Page extraction failed', e);
+      toast('Extraction failed — ' + e.message);
+    }
+  },
+  promptMerge() {
+    const items = Cache.pdfs || [];
+    if (items.length < 2) { toast('Need at least two PDFs in your library to merge'); return; }
+    const opts = items.map(p => `<option value="${p.id}">${esc(p.title)}</option>`).join('');
+    Modal.open('Merge PDFs', `
+      <p class="subtle">Appends the second PDF's pages after the first's, as one new PDF — the originals are untouched.</p>
+      <label>First PDF</label><select id="mMergeA" title="Pages from this PDF come first">${opts}</select>
+      <label>Second PDF</label><select id="mMergeB" title="Pages from this PDF are appended after">${opts}</select>
+      <label>New title</label><input type="text" id="mMergeTitle" value="Merged PDF" title="Title for the merged PDF">
+      <div class="modal-actions"><button class="btn secondary" onclick="Modal.close()" title="Cancel">Cancel</button>
+      <button class="btn" onclick="Pdfs.doMerge()" title="Create the merged PDF">Merge</button></div>`);
+  },
+  async doMerge() {
+    const idA = document.getElementById('mMergeA').value;
+    const idB = document.getElementById('mMergeB').value;
+    const title = document.getElementById('mMergeTitle').value.trim() || 'Merged PDF';
+    if (!idA || !idB) { toast('Pick two PDFs first'); return; }
+    if (idA === idB) { toast('Pick two different PDFs to merge'); return; }
+    if (typeof PDFLib === 'undefined') { toast('The PDF library failed to load — check your connection and try again'); return; }
+    const recA = await DB.get('pdfs', idA), recB = await DB.get('pdfs', idB);
+    if (!recA?.blob || !recB?.blob) { toast('Could not find one of those PDFs\' content'); return; }
+    Modal.close();
+    toast('Merging…');
+    try {
+      const { PDFDocument } = PDFLib;
+      const docA = await PDFDocument.load(recA.blob.slice(0));
+      const docB = await PDFDocument.load(recB.blob.slice(0));
+      const newDoc = await PDFDocument.create();
+      const pagesA = await newDoc.copyPages(docA, docA.getPageIndices());
+      pagesA.forEach(p => newDoc.addPage(p));
+      const pagesB = await newDoc.copyPages(docB, docB.getPageIndices());
+      pagesB.forEach(p => newDoc.addPage(p));
+      const bytes = await newDoc.save();
+      await saveItem('pdfs', {
+        id: uid(), filename: `${slugify(title)}.pdf`, title,
+        subjectId: recA.subjectId, chapterId: recA.chapterId, topicId: '',
+        pageCount: pagesA.length + pagesB.length, blob: bytes, createdAt: nowISO()
+      });
+      toast(`Merged into a new ${pagesA.length + pagesB.length}-page PDF`);
+      Router.render();
+    } catch (e) {
+      console.warn('PDF merge failed', e);
+      toast('Merge failed — ' + e.message);
+    }
+  },
+
   openHighlight(id) {
     const a = Cache.annotations.find(x => x.id === id); if (!a) return;
     Modal.open(a.kind === 'underline' ? 'Underline' : 'Highlight', `
@@ -2275,6 +2680,8 @@ const Pdfs = {
 /* Static command list for the palette — actions, not content. Dynamic
    "Go to subject" commands are appended at search time from Cache.subjects. */
 const Commands = [
+  { label: 'Quick Capture (jot it down)', icon: '📥', kind: 'Create', run: () => { CmdK.close(); QuickCapture.open(); } },
+  { label: 'Open Inbox', icon: '📥', kind: 'Go to', run: () => { CmdK.close(); UI.nav('inbox'); } },
   { label: 'New Note', icon: '📝', kind: 'Create', run: () => { CmdK.close(); Notes.promptNew(); } },
   { label: 'New Course', icon: '📚', kind: 'Create', run: () => { CmdK.close(); Courses.promptNew(); } },
   { label: 'Import PDF', icon: '📄', kind: 'Create', run: () => { CmdK.close(); Pdfs.upload(); } },
@@ -2347,6 +2754,105 @@ const CmdK = {
   },
   runCommand(i) { const r = this._results[i]; if (r && r.run) r.run(); },
   go(route, id) { CmdK.close(); UI.nav(route, { id }); }
+};
+
+/* ============================== QUICK CAPTURE ============================== */
+// A stray thought mid-PDF-read shouldn't require breaking flow to navigate
+// to Notes and pick a topic — jot it down here, file it into a topic later
+// from the Inbox.
+const QuickCapture = {
+  open() {
+    if (document.getElementById('qcBackdrop')) return; // already open
+    const backdrop = document.createElement('div');
+    backdrop.className = 'cmdk-backdrop'; backdrop.id = 'qcBackdrop';
+    backdrop.onclick = (e) => { if (e.target === backdrop) QuickCapture.close(); };
+    backdrop.innerHTML = `<div class="cmdk" style="padding:16px;">
+      <div style="font-weight:600;margin-bottom:8px;">📥 Jot it down</div>
+      <textarea id="qcInput" rows="3" placeholder="A stray thought, a fact to look up later, anything…" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:10px;background:var(--bg);color:var(--text);font-family:inherit;font-size:14px;resize:vertical;" onkeydown="if(event.key==='Enter'&&(event.metaKey||event.ctrlKey)){event.preventDefault();QuickCapture.save();}"></textarea>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;">
+        <span class="subtle" style="font-size:12px;">Saved to your Inbox — file it into a topic anytime. Esc to cancel, ⌘/Ctrl+Enter to save.</span>
+        <div style="display:flex;gap:8px;">
+          <button class="btn secondary sm" onclick="QuickCapture.close()" title="Discard and close">Cancel</button>
+          <button class="btn sm" onclick="QuickCapture.save()" title="Save this to your Inbox">Save</button>
+        </div>
+      </div>
+    </div>`;
+    document.body.appendChild(backdrop);
+    setTimeout(() => document.getElementById('qcInput')?.focus(), 30);
+  },
+  close() { const b = document.getElementById('qcBackdrop'); if (b) b.remove(); },
+  async save() {
+    const text = (document.getElementById('qcInput')?.value || '').trim();
+    if (!text) { QuickCapture.close(); return; }
+    await saveItem('quickCaptures', { id: uid(), text, createdAt: nowISO() });
+    QuickCapture.close();
+    toast('Saved to Inbox');
+    updateInboxBadge();
+    if (UI.route === 'inbox') Router.render();
+  }
+};
+function updateInboxBadge() {
+  const n = (Cache.quickCaptures || []).length;
+  const b = document.getElementById('inboxBadge');
+  if (b) { b.textContent = n; b.style.display = n ? 'inline-block' : 'none'; }
+}
+const InboxView = {
+  render() {
+    const items = [...(Cache.quickCaptures || [])].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    if (!items.length) return emptyState('📥', 'Inbox is empty — jot down a stray thought anytime with the Quick Capture shortcut, and file it into a topic when you\'re ready.', null, null);
+    return `<h2>Inbox (${items.length})</h2>
+    <p class="subtle">Quick-captured thoughts, not yet filed anywhere.</p>
+    ${items.map(c => `<div class="card" style="margin-bottom:10px;">
+      <div style="white-space:pre-wrap;">${esc(c.text)}</div>
+      <div class="note-meta-row" style="margin-top:8px;">
+        <span class="subtle">${fmtDateShort(c.createdAt)}</span>
+        <button class="btn sm secondary" onclick="QuickCapture.promptFile('${c.id}')" title="Turn this into a note in a topic">📤 File into topic</button>
+        <button class="btn sm secondary" onclick="QuickCapture.discard('${c.id}')" title="Delete this capture">Discard</button>
+      </div>
+    </div>`).join('')}`;
+  }
+};
+QuickCapture.promptFile = function (id) {
+  const cap = (Cache.quickCaptures || []).find(c => c.id === id);
+  if (!cap) return;
+  const suggestedTitle = cap.text.split('\n')[0].slice(0, 60) || 'Untitled note';
+  Modal.open('File into Topic', `
+    <label>Title</label><input type="text" id="qcFileTitle" value="${esc(suggestedTitle)}" title="Note title">
+    <label>Topic</label><select id="qcFileTopic" title="Which topic this becomes a note in">${topicOptions()}</select>
+    <div class="modal-actions"><button class="btn secondary" onclick="Modal.close()" title="Cancel">Cancel</button>
+    <button class="btn" onclick="QuickCapture.fileAs('${id}')" title="Create a note from this capture">Create Note</button></div>`);
+  setTimeout(() => document.getElementById('qcFileTitle')?.focus(), 50);
+};
+QuickCapture.fileAs = async function (id) {
+  const cap = (Cache.quickCaptures || []).find(c => c.id === id);
+  if (!cap) return;
+  const title = document.getElementById('qcFileTitle').value.trim() || 'Untitled note';
+  const topicId = document.getElementById('qcFileTopic').value;
+  if (!topicId) { toast('Pick a topic first'); return; }
+  const topic = (Cache.topics || []).find(t => t.id === topicId);
+  const chapter = topic ? (Cache.chapters || []).find(c => c.id === topic.chapterId) : null;
+  const order = (Cache.notes || []).filter(n => n.topicId === topicId).length;
+  const note = {
+    id: uid(), title, topicId, chapterId: chapter?.id, subjectId: chapter?.subjectId, order,
+    content: `<p>${esc(cap.text).replace(/\n/g, '<br>')}</p>`, tags: [], importance: 3, examFrequency: 'medium', status: 'learning',
+    createdAt: nowISO(), revision: { stage: -1, nextDate: null }
+  };
+  await saveItem('notes', note);
+  await DB.del('quickCaptures', id);
+  Cache.quickCaptures = Cache.quickCaptures.filter(c => c.id !== id);
+  await recordTombstone('quickCaptures', id);
+  Modal.close();
+  toast('Filed as a note');
+  updateInboxBadge();
+  UI.nav('note', { id: note.id });
+};
+QuickCapture.discard = async function (id) {
+  if (!confirm('Discard this capture? This can\'t be undone.')) return;
+  await DB.del('quickCaptures', id);
+  Cache.quickCaptures = Cache.quickCaptures.filter(c => c.id !== id);
+  await recordTombstone('quickCaptures', id);
+  updateInboxBadge();
+  Router.render();
 };
 const Search = {
   run(q) {
@@ -2428,6 +2934,7 @@ const RevisionView = {
     if (this.mode === 'list' || !due.length) {
       if (!due.length) return emptyState('🎉', 'Nothing due for revision right now.', null, null);
       return `<h2>Revision due today (${due.length})</h2>
+      <p class="subtle" style="margin-top:-6px;">Mixed across subjects rather than one at a time — interleaved practice sticks better.</p>
       <button class="btn" style="margin-bottom:14px;" onclick="RevisionView.mode='cards';RevisionView.cardIndex=0;Router.render();" title="Begin reviewing everything due today, one card at a time">▶ Start Revision Session</button>
       ${due.map(d => `<div class="list-row"><span>${kindIcon(d)}</span>
         <div style="flex:1;">${esc(d.type === 'note' ? d.obj.title : d.obj.front)}</div>
@@ -2533,7 +3040,17 @@ const ExamMode = {
     if (q.type === 'Fill in the Blank') {
       return `<label>Your answer</label><input type="text" id="examFIB" title="Type your answer">`;
     }
-    return `<label>Your answer</label><textarea id="examAnswerBox" rows="6" oninput="ExamMode.answer=this.value">${esc(this.answer)}</textarea>`;
+    const words = (this.answer.trim().match(/\S+/g) || []).length;
+    const pages = (words / 100).toFixed(1);
+    return `<label>Your answer</label><textarea id="examAnswerBox" rows="6" oninput="ExamMode.answer=this.value;ExamMode.updateWordCount()">${esc(this.answer)}</textarea>
+      <div class="subtle" id="examWordCount" style="margin-top:4px;">${words} word${words === 1 ? '' : 's'} · ~${pages} page${pages === '1.0' ? '' : 's'} <span style="opacity:.7;">(rough estimate, ~100 words/handwritten page)</span></div>`;
+  },
+  updateWordCount() {
+    const el = document.getElementById('examWordCount');
+    if (!el) return;
+    const words = (this.answer.trim().match(/\S+/g) || []).length;
+    const pages = (words / 100).toFixed(1);
+    el.innerHTML = `${words} word${words === 1 ? '' : 's'} · ~${pages} page${pages === '1.0' ? '' : 's'} <span style="opacity:.7;">(rough estimate, ~100 words/handwritten page)</span>`;
   },
   gradedViewHTML(q) {
     if (this.autoVerdict) {
@@ -2620,25 +3137,25 @@ const LMR = {
     (Cache.notes || []).forEach(n => {
       if (subjectId && n.subjectId !== subjectId) return;
       if (n.importance >= 4 || n.examFrequency === 'high' || n.status === 'difficult') {
-        items.push({ type: 'Note', icon: '📝', title: n.title, body: stripHtml(n.content).slice(0, 500), tag: n.examFrequency === 'high' ? 'Exam Important' : (n.status === 'difficult' ? 'Difficult' : `★${n.importance}`) });
+        items.push({ type: 'Note', icon: '📝', title: n.title, body: stripHtml(n.content).slice(0, 500), tag: n.examFrequency === 'high' ? 'Exam Important' : (n.status === 'difficult' ? 'Difficult' : `★${n.importance}`), _subj: n.subjectId });
       }
     });
     (Cache.jargons || []).forEach(j => {
       if (subjectId && j.subjectId !== subjectId) return;
       if (j.importance && j.importance !== 'Normal') {
-        items.push({ type: 'Jargon', icon: '🔤', title: j.term, body: j.meaning + (j.memoryTrick ? `\n💡 ${j.memoryTrick}` : ''), tag: j.importance });
+        items.push({ type: 'Jargon', icon: '🔤', title: j.term, body: j.meaning + (j.memoryTrick ? `\n💡 ${j.memoryTrick}` : ''), tag: j.importance, _subj: j.subjectId });
       }
     });
     (Cache.questions || []).forEach(q => {
       if (subjectId && q.subjectId !== subjectId) return;
       if (q.difficulty === 'Hard') {
-        items.push({ type: 'Question', icon: '❓', title: q.questionText, body: q.modelAnswer || '(No model answer recorded)', tag: 'Hard' });
+        items.push({ type: 'Question', icon: '❓', title: q.questionText, body: q.modelAnswer || '(No model answer recorded)', tag: 'Hard', _subj: q.subjectId });
       }
     });
     (Cache.mnemonics || []).forEach(m => {
       if (subjectId && topicSubjectId(m.topicId) !== subjectId) return;
       if (m.favorite) {
-        items.push({ type: 'Mnemonic', icon: '🧠', title: m.title, body: `${m.mnemonicText}\n${m.meaning}`, tag: 'Favorite' });
+        items.push({ type: 'Mnemonic', icon: '🧠', title: m.title, body: `${m.mnemonicText}\n${m.meaning}`, tag: 'Favorite', _subj: topicSubjectId(m.topicId) });
       }
     });
     return items;
@@ -2646,7 +3163,7 @@ const LMR = {
   render() { return this.mode === 'setup' ? this.renderSetup() : this.renderStream(); },
   renderSetup() {
     return `<h2>Last-Minute Revision</h2>
-      <p class="subtle">Rapid-fire through only your highest-priority content: ★4–5 notes, exam-important notes, difficult topics, must-memorize jargons, hard questions, and favorited mnemonics.</p>
+      <p class="subtle">Rapid-fire through only your highest-priority content: ★4–5 notes, exam-important notes, difficult topics, must-memorize jargons, hard questions, and favorited mnemonics. Across all subjects, they're mixed together rather than done one subject at a time.</p>
       <div class="card" style="max-width:420px;">
         <label>Subject</label>
         <select id="lmrSubject" title="Limit the review stream to one subject"><option value="">All subjects</option>${subjectOptions()}</select>
@@ -2655,7 +3172,8 @@ const LMR = {
   },
   start() {
     const subj = document.getElementById('lmrSubject').value;
-    this.items = this.gather(subj);
+    const gathered = this.gather(subj);
+    this.items = subj ? gathered : interleaveBySubject(gathered, it => it._subj);
     if (!this.items.length) { toast('Nothing marked high-importance / exam-critical yet for this selection.'); return; }
     this.index = 0; this.mode = 'stream'; Router.render();
   },
@@ -2679,9 +3197,138 @@ const LMR = {
   reset() { this.mode = 'setup'; this.items = []; this.index = 0; Router.render(); }
 };
 
+/* ============================== CLOZE REVIEW (from note highlights) ============================== */
+const Cloze = {
+  items: [], index: 0, revealed: false, correct: 0, noteTitle: '', noteId: '',
+  // Turns each <mark> in a note into a fill-in-the-blank card: the mark's own
+  // text is the answer, its enclosing block (paragraph/list item/etc.) with
+  // that one mark blanked out — and every other mark in the block flattened
+  // to plain text, so no other highlighted word gives the answer away — is
+  // the prompt. Recalling the blanked word is retrieval; just re-reading a
+  // highlight is only recognition.
+  extractFromNote(note) {
+    const div = document.createElement('div');
+    div.innerHTML = note.content || '';
+    const marks = Array.from(div.querySelectorAll('mark'));
+    marks.forEach((m, i) => m.setAttribute('data-cz', i));
+    const cards = [];
+    marks.forEach((mark, i) => {
+      const answer = (mark.textContent || '').trim();
+      if (answer.length < 2) return;
+      const block = mark.closest('p,li,td,h2,h3,blockquote') || mark.parentElement;
+      if (!block) return;
+      const clone = block.cloneNode(true);
+      clone.querySelectorAll('mark').forEach((cm) => {
+        const span = document.createElement('span');
+        span.textContent = cm.getAttribute('data-cz') === String(i) ? '_____' : (cm.textContent || '');
+        cm.replaceWith(span);
+      });
+      const prompt = (clone.textContent || '').replace(/\s+/g, ' ').trim();
+      if (prompt) cards.push({ prompt, answer });
+    });
+    return cards;
+  },
+  start(noteId) {
+    const note = (Cache.notes || []).find((n) => n.id === noteId);
+    if (!note) return;
+    const cards = this.extractFromNote(note);
+    if (!cards.length) { toast('No highlights in this note yet — highlight some text first, then come back to build cloze cards.'); return; }
+    this.items = cards.sort(() => Math.random() - 0.5);
+    this.index = 0; this.revealed = false; this.correct = 0; this.noteTitle = note.title; this.noteId = noteId;
+    UI.nav('cloze');
+  },
+  render() {
+    if (!this.items.length) return emptyState('📇', 'No cloze session active — open a note and click "Cloze Review".', null, null);
+    if (this.index >= this.items.length) {
+      return `<h2>Cloze Review complete 🎉</h2>
+        <div class="card" style="max-width:420px;">
+          <div class="subtle">From: ${esc(this.noteTitle)}</div>
+          <h2 style="margin:10px 0;">${this.correct} / ${this.items.length} recalled</h2>
+        </div>
+        <button class="btn" style="margin-top:16px;" onclick="UI.nav('note',{id:'${this.noteId}'})" title="Return to the note">Back to note</button>`;
+    }
+    const it = this.items[this.index];
+    return `<div class="subtle" style="margin-bottom:10px;">Cloze ${this.index + 1} of ${this.items.length} · from "${esc(this.noteTitle)}"</div>
+      <div class="card" style="max-width:640px;">
+        <div style="font-size:16px;line-height:1.6;">${esc(it.prompt)}</div>
+        ${this.revealed ? `<div class="subtle" style="margin-top:14px;padding:8px;background:var(--bg);border-radius:8px;"><b>${esc(it.answer)}</b></div>` : ''}
+      </div>
+      ${this.revealed
+        ? `<div class="rate-row" style="margin-top:14px;">
+             <button class="again" onclick="Cloze.grade(false)" title="Didn't recall it">Missed it</button>
+             <button class="good" onclick="Cloze.grade(true)" title="Recalled it correctly">Got it</button>
+           </div>`
+        : `<button class="btn" style="margin-top:14px;" onclick="Cloze.reveal()" title="Show the blanked-out word">Show answer</button>`}
+      <div style="text-align:center;margin-top:16px;"><button class="btn secondary sm" onclick="Cloze.exit()" title="Stop this cloze session">Exit</button></div>`;
+  },
+  reveal() { this.revealed = true; Router.render(); },
+  grade(known) { if (known) this.correct++; this.index++; this.revealed = false; Router.render(); },
+  exit() { const nid = this.noteId; this.items = []; UI.nav('note', { id: nid }); }
+};
+
+/* ============================== TOPIC QUIZ (mixed self-test) ============================== */
+const TopicQuiz = {
+  items: [], index: 0, revealed: false, correct: 0, topicId: '', topicName: '',
+  gather(topicId) {
+    const topic = (Cache.topics || []).find((t) => t.id === topicId);
+    const chapter = topic ? (Cache.chapters || []).find((c) => c.id === topic.chapterId) : null;
+    const subjId = chapter?.subjectId;
+    const items = [];
+    (Cache.mnemonics || []).filter((m) => m.topicId === topicId).forEach((m) => {
+      items.push({ type: 'Mnemonic', icon: '🧠', front: `Mnemonic for "${m.title}"?`, back: `${m.mnemonicText}${m.meaning ? '\n' + m.meaning : ''}` });
+    });
+    (Cache.questions || []).filter((q) => q.topicId === topicId).forEach((q) => {
+      items.push({ type: 'Question', icon: '❓', front: q.questionText, back: (q.modelAnswer && q.modelAnswer.trim()) ? q.modelAnswer : '(No model answer recorded)' });
+    });
+    if (subjId) {
+      (Cache.jargons || []).filter((j) => j.subjectId === subjId).forEach((j) => {
+        items.push({ type: 'Jargon', icon: '🔤', front: j.term, back: j.meaning + (j.memoryTrick ? `\n💡 ${j.memoryTrick}` : '') });
+      });
+    }
+    return items;
+  },
+  start(topicId) {
+    const topic = (Cache.topics || []).find((t) => t.id === topicId);
+    if (!topic) return;
+    const items = this.gather(topicId);
+    if (!items.length) { toast('Nothing to quiz yet — add a mnemonic, question, or this subject\'s jargon first.'); return; }
+    this.items = items.sort(() => Math.random() - 0.5);
+    this.index = 0; this.revealed = false; this.correct = 0; this.topicId = topicId; this.topicName = topic.name;
+    UI.nav('topicquiz');
+  },
+  render() {
+    if (!this.items.length) return emptyState('🎯', 'No quiz session active — open a topic and click "Quiz me".', null, null);
+    if (this.index >= this.items.length) {
+      return `<h2>Quiz complete 🎉</h2>
+        <div class="card" style="max-width:420px;">
+          <div class="subtle">Topic: ${esc(this.topicName)}</div>
+          <h2 style="margin:10px 0;">${this.correct} / ${this.items.length} correct</h2>
+        </div>
+        <button class="btn" style="margin-top:16px;" onclick="UI.nav('topic',{id:'${this.topicId}'})" title="Return to the topic">Back to topic</button>`;
+    }
+    const it = this.items[this.index];
+    return `<div class="subtle" style="margin-bottom:10px;">Question ${this.index + 1} of ${this.items.length} · ${esc(this.topicName)}</div>
+      <div class="flash-card" onclick="TopicQuiz.reveal()" title="Click to reveal the answer">
+        <span class="pill" style="margin-bottom:8px;">${it.icon} ${esc(it.type)}</span><br>
+        ${this.revealed ? esc(it.back) : esc(it.front)}
+      </div>
+      <div class="subtle" style="text-align:center;margin-top:8px;">${this.revealed ? '' : 'Tap card to reveal the answer'}</div>
+      ${this.revealed
+        ? `<div class="rate-row" style="margin-top:14px;">
+             <button class="again" onclick="TopicQuiz.grade(false)" title="Didn't get it right">Incorrect</button>
+             <button class="good" onclick="TopicQuiz.grade(true)" title="Got it right">Correct</button>
+           </div>`
+        : ''}
+      <div style="text-align:center;margin-top:16px;"><button class="btn secondary sm" onclick="TopicQuiz.exit()" title="Stop this quiz">Exit</button></div>`;
+  },
+  reveal() { this.revealed = true; Router.render(); },
+  grade(correct) { if (correct) this.correct++; this.index++; this.revealed = false; Router.render(); },
+  exit() { const tid = this.topicId; this.items = []; UI.nav('topic', { id: tid }); }
+};
+
 /* ============================== STUDY TIMER / FOCUS MODE ============================== */
 const Timer = {
-  seconds: 25 * 60, running: false, interval: null, mode: '25/5',
+  seconds: 25 * 60, running: false, interval: null, mode: '25/5', subjectId: '',
   render() {
     return `<h2>Study Timer</h2>
     <div class="card" style="max-width:420px;">
@@ -2691,7 +3338,11 @@ const Timer = {
         <button class="btn sm ${this.mode === 'custom' ? '' : 'secondary'}" onclick="Timer.setMode('custom')" title="Set your own duration">Custom</button>
       </div>
       <div class="timer-display" id="timerDisplay">${Timer.fmt()}</div>
-      <div style="display:flex;gap:8px;justify-content:center;">
+      <label style="margin-top:10px;">Subject <span class="subtle" style="font-weight:normal;">(optional — tags this session for the time-per-subject chart in Analytics)</span></label>
+      <select onchange="Timer.subjectId=this.value" title="Which subject this session is for">
+        <option value="">Not specified</option>${subjectOptions(this.subjectId)}
+      </select>
+      <div style="display:flex;gap:8px;justify-content:center;margin-top:10px;">
         <button class="btn" onclick="Timer.start()" title="${this.running ? 'Pause the timer' : 'Start the timer'}">${this.running ? 'Pause' : 'Start'}</button>
         <button class="btn secondary" onclick="Timer.reset()" title="Reset the timer to the start">Reset</button>
       </div>
@@ -2708,7 +3359,7 @@ const Timer = {
     this.interval = setInterval(() => {
       this.seconds--;
       const d = document.getElementById('timerDisplay'); if (d) d.textContent = this.fmt();
-      if (this.seconds <= 0) { clearInterval(this.interval); this.running = false; toast('Session complete!'); saveItem('studySessions', { id: uid(), duration: (this.mode === '25/5' ? 25 : 50), date: nowISO() }); Router.render(); }
+      if (this.seconds <= 0) { clearInterval(this.interval); this.running = false; toast('Session complete!'); saveItem('studySessions', { id: uid(), duration: (this.mode === '25/5' ? 25 : 50), date: nowISO(), subjectId: this.subjectId || '' }); Router.render(); }
     }, 1000);
     Router.render();
   },
@@ -2738,9 +3389,10 @@ const SettingsView = {
     <div class="card" style="max-width:520px;margin-bottom:14px;">
       <h4 style="margin-top:0;">Appearance</h4>
       <label>Theme</label>
-      <select onchange="Settings.set('theme',this.value).then(()=>Theme.apply())" title="Switch between light and dark mode">
+      <select onchange="Settings.set('theme',this.value).then(()=>Theme.apply())" title="Switch between light, dark, and sepia (warm paper) mode">
         <option value="light" ${Settings.get('theme') === 'light' ? 'selected' : ''}>Light</option>
         <option value="dark" ${Settings.get('theme') === 'dark' ? 'selected' : ''}>Dark</option>
+        <option value="sepia" ${Settings.get('theme') === 'sepia' ? 'selected' : ''}>Sepia (warm paper — easier on the eyes for long PDF sessions)</option>
       </select>
     </div>
     <div class="card" style="max-width:520px;margin-bottom:14px;">
@@ -3219,6 +3871,21 @@ const Analytics = {
     }
     return arr;
   },
+  // Study-timer minutes per day for the last N days (oldest first) — the
+  // basis for the Dashboard's GitHub-style activity heatmap.
+  dailyMinutes(days = 84) {
+    const totals = new Map();
+    (Cache.studySessions || []).forEach(s => {
+      const key = new Date(s.date).toDateString();
+      totals.set(key, (totals.get(key) || 0) + (s.duration || 0));
+    });
+    const arr = [];
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date(); d.setDate(d.getDate() - i);
+      arr.push({ date: d, mins: totals.get(d.toDateString()) || 0 });
+    }
+    return arr;
+  },
   // Per-topic "weak" (difficult notes + incorrect questions) and "strong"
   // (mastered notes + correct questions) signal counts — the closest thing
   // to a mastery score without a dedicated topic-importance field.
@@ -3254,6 +3921,27 @@ const Analytics = {
         questionsAccuracyPct: qAttempted ? Math.round(qCorrect / qAttempted * 100) : null
       };
     });
+  },
+  // Total Study Timer minutes per subject (sessions left unspecified are
+  // grouped together) — the basis for the Analytics time-per-subject donut.
+  subjectTime() {
+    const totals = new Map();
+    (Cache.studySessions || []).forEach(s => {
+      const key = s.subjectId || '_untagged';
+      totals.set(key, (totals.get(key) || 0) + (s.duration || 0));
+    });
+    return Array.from(totals.entries())
+      .map(([id, mins]) => ({ id, mins, name: id === '_untagged' ? 'Unspecified' : subjectName(id), color: id === '_untagged' ? null : (Cache.subjects || []).find(s => s.id === id)?.color }))
+      .filter(x => x.mins > 0)
+      .sort((a, b) => b.mins - a.mins);
+  },
+  // Question accuracy split by difficulty — the basis for the Analytics bar chart.
+  accuracyByDifficulty() {
+    return ['Easy', 'Medium', 'Hard'].map(diff => {
+      const qs = (Cache.questions || []).filter(q => q.difficulty === diff && q.status !== 'not-attempted');
+      const correct = qs.filter(q => q.status === 'correct').length;
+      return { difficulty: diff, attempted: qs.length, correct, pct: qs.length ? Math.round(correct / qs.length * 100) : null };
+    });
   }
 };
 const AnalyticsView = {
@@ -3263,7 +3951,11 @@ const AnalyticsView = {
     const weak = Analytics.weakTopics();
     const strong = Analytics.strongTopics();
     const subjects = Analytics.subjectBreakdown();
+    const subjTime = Analytics.subjectTime();
+    const accByDiff = Analytics.accuracyByDifficulty();
     const totalHours = Math.round(((Cache.studySessions || []).reduce((a, b) => a + b.duration, 0) / 60) * 10) / 10;
+    const donutColors = ['#D9B24C', '#7FE0A0', '#8FC7FA', '#FF9585', '#D9AEFF', '#FFB870'];
+    const subjTimeTotal = subjTime.reduce((a, s) => a + s.mins, 0);
     return `<h2>Analytics</h2>
     <p class="subtle">Built from your notes' status, question results, and revision history — not a separate thing you have to maintain.</p>
     <div class="grid cols-3" style="margin:18px 0;">
@@ -3292,6 +3984,25 @@ const AnalyticsView = {
           <div class="subtle" style="margin-top:4px;">${[t.notesMastered ? `${t.notesMastered} mastered note${t.notesMastered === 1 ? '' : 's'}` : '', t.qCorrect ? `${t.qCorrect} correct question${t.qCorrect === 1 ? '' : 's'}` : ''].filter(Boolean).join(' · ')}</div>
         </div>`).join('') : `<div class="subtle">Nothing mastered yet — mark notes "mastered" as you get confident, or answer some questions.</div>`}
       </div>
+    </div>
+    <h3>Accuracy by difficulty</h3>
+    <div class="card" style="margin-bottom:22px;max-width:520px;">
+      ${accByDiff.map(d => `<div style="margin-bottom:10px;" title="${d.attempted} attempted, ${d.correct} correct">
+        <div style="display:flex;justify-content:space-between;font-size:13.5px;"><span>${d.difficulty}</span><span class="subtle" style="font-family:var(--mono);">${d.pct === null ? 'No attempts yet' : `${d.pct}% (${d.correct}/${d.attempted})`}</span></div>
+        <div class="progress-bar"><div style="width:${d.pct || 0}%"></div></div>
+      </div>`).join('')}
+    </div>
+    <h3>Time by subject</h3>
+    <div class="card" style="margin-bottom:22px;">
+      ${subjTime.length ? `<div style="display:flex;gap:24px;align-items:center;flex-wrap:wrap;">
+        ${svgDonut(subjTime.map((s, i) => ({ value: s.mins, color: s.color || donutColors[i % donutColors.length] })))}
+        <div style="flex:1;min-width:180px;">
+          ${subjTime.map((s, i) => `<div style="display:flex;justify-content:space-between;gap:10px;font-size:13.5px;margin-bottom:6px;">
+            <span><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${s.color || donutColors[i % donutColors.length]};margin-right:6px;"></span>${esc(s.name)}</span>
+            <span class="subtle" style="font-family:var(--mono);">${s.mins} min · ${Math.round(s.mins / subjTimeTotal * 100)}%</span>
+          </div>`).join('')}
+        </div>
+      </div>` : `<div class="subtle">No timed study sessions logged yet — use the Study Timer (optionally tagging a subject) to see time split here.</div>`}
     </div>
     <h3>Subject breakdown</h3>
     ${subjects.length ? subjects.map(s => `<div class="card" style="margin-bottom:8px;">
@@ -3326,6 +4037,31 @@ function emptyState(icon, msg, btnLabel, btnAction) {
   return `<div class="empty-state"><div style="font-size:38px;">${icon}</div><h3>${esc(msg)}</h3>
     ${btnLabel ? `<button class="btn" onclick="${btnAction}" title="${esc(btnLabel)}">${esc(btnLabel)}</button>` : ''}</div>`;
 }
+// Intensity styling for one day of the Dashboard's activity heatmap, scaled
+// by minutes studied that day (GitHub-contribution-graph style).
+function heatCellStyle(mins) {
+  const lvl = mins <= 0 ? 0 : mins < 15 ? 1 : mins < 30 ? 2 : mins < 60 ? 3 : 4;
+  if (lvl === 0) return 'background:var(--accent-soft);';
+  const op = [0, 0.35, 0.55, 0.78, 1][lvl];
+  return `background:var(--accent);opacity:${op};`;
+}
+// Renders a simple SVG donut chart from segments [{value, color}]. Stacks
+// stroked-circle arcs consecutively using stroke-dasharray/-dashoffset — no
+// charting library needed. An empty/zero-total set draws a flat grey ring.
+function svgDonut(segments, size = 150) {
+  const total = segments.reduce((a, s) => a + s.value, 0);
+  const r = size / 2 - 14, cx = size / 2, cy = size / 2, circumference = 2 * Math.PI * r;
+  if (!total) return `<svg viewBox="0 0 ${size} ${size}" width="${size}" height="${size}"><circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="var(--border)" stroke-width="20"/></svg>`;
+  let offset = 0;
+  const arcs = segments.map((seg) => {
+    const frac = seg.value / total;
+    const len = frac * circumference;
+    const circle = `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${seg.color}" stroke-width="20" stroke-dasharray="${len} ${circumference - len}" stroke-dashoffset="${-offset}" transform="rotate(-90 ${cx} ${cy})"/>`;
+    offset += len;
+    return circle;
+  }).join('');
+  return `<svg viewBox="0 0 ${size} ${size}" width="${size}" height="${size}">${arcs}</svg>`;
+}
 const Dashboard = {
   render() {
     const notes = Cache.notes || [];
@@ -3352,6 +4088,9 @@ const Dashboard = {
     const r = 52, circumference = 2 * Math.PI * r;
     const dashOffset = circumference * (1 - masteryPct / 100);
     const streak = (typeof Analytics !== 'undefined' ? Analytics.streaks() : { current: 0 }).current;
+    const weakest = (typeof Analytics !== 'undefined' ? Analytics.weakTopics(1)[0] : null);
+    const heat = Analytics.dailyMinutes(84);
+    const heatPad = heat.length ? heat[0].date.getDay() : 0;
     return `
     <div class="focus-hero">
       <div>
@@ -3376,7 +4115,29 @@ const Dashboard = {
         <div class="focus-ring-label"><b>${masteryPct}%</b><span>mastered</span></div>
       </div>
     </div>
-    <h3>Continue studying</h3>
+    <div class="card" style="margin:18px 0;">
+      <h4 style="margin:0 0 10px;">Today</h4>
+      <div style="display:flex;gap:22px;flex-wrap:wrap;">
+        <div style="flex:1;min-width:160px;">
+          <div class="subtle">Due for revision</div>
+          <b style="font-size:20px;">${due.length} item${due.length === 1 ? '' : 's'}</b>
+          ${due.length ? `<div style="margin-top:6px;"><button class="btn sm" onclick="UI.nav('revision')" title="Go to the revision queue">Start Revision</button></div>` : `<div class="subtle" style="margin-top:6px;">Nothing due — you're caught up.</div>`}
+        </div>
+        <div style="flex:1;min-width:160px;">
+          <div class="subtle">Weakest topic right now</div>
+          ${weakest
+            ? `<b style="font-size:16px;">${esc(weakest.topic.name)}</b><div class="subtle">${weakest.weakScore} signal${weakest.weakScore === 1 ? '' : 's'} · ${subjectName(weakest.subjectId)}</div>
+               <div style="margin-top:6px;"><button class="btn sm secondary" onclick="UI.nav('topic',{id:'${weakest.topic.id}'})" title="Open this topic">Review it</button></div>`
+            : `<b style="font-size:16px;">None flagged</b><div class="subtle" style="margin-top:2px;">Nothing marked difficult or incorrect yet.</div>`}
+        </div>
+      </div>
+    </div>
+    <h3 style="margin-top:22px;">Study activity <span class="subtle" style="font-weight:normal;font-size:12px;">last 12 weeks</span></h3>
+    <div style="display:grid;grid-template-rows:repeat(7,13px);grid-auto-flow:column;grid-auto-columns:13px;gap:3px;overflow-x:auto;padding-bottom:6px;" title="Each square is one day — darker means more minutes studied that day">
+      ${Array.from({ length: heatPad }, () => `<div></div>`).join('')}
+      ${heat.map(d => `<div style="border-radius:3px;${heatCellStyle(d.mins)}" title="${d.date.toDateString()} — ${d.mins} min"></div>`).join('')}
+    </div>
+    <h3 style="margin-top:22px;">Continue studying</h3>
     ${recentNotes.length ? recentNotes.map(n => `<div class="list-row" onclick="UI.nav('note',{id:'${n.id}'})" title="Open this note">
       <span>📝</span><div style="flex:1;">${esc(n.title)}<div class="subtle">${subjectName(n.subjectId)} · updated ${fmtDateShort(n.updatedAt || n.createdAt)}</div></div>
     </div>`).join('') : `<div class="subtle">No notes yet — create your first one.</div>`}
@@ -3396,6 +4157,55 @@ const Dashboard = {
 };
 
 /* ============================== TOPIC VIEW ============================== */
+// Bulk selection state for a topic's notes list — kept separate from
+// TopicView (a plain function, not a stateful module) so multi-select
+// survives re-renders triggered by the actions themselves.
+const TopicNotesBulk = {
+  selectMode: false,
+  selectedIds: new Set(),
+  toggleSelectMode() { this.selectMode = !this.selectMode; if (!this.selectMode) this.selectedIds.clear(); Router.render(); },
+  toggleSelect(id) { if (this.selectedIds.has(id)) this.selectedIds.delete(id); else this.selectedIds.add(id); Router.render(); },
+  async bulkTag() {
+    const tag = (document.getElementById('notesBulkTag')?.value || '').trim();
+    if (!tag) { toast('Type a tag first'); return; }
+    const ids = Array.from(this.selectedIds);
+    for (const id of ids) {
+      const n = Cache.notes.find(x => x.id === id);
+      if (!n) continue;
+      n.tags = n.tags || [];
+      if (!n.tags.includes(tag)) n.tags.push(tag);
+      await saveItem('notes', n);
+    }
+    toast(`Tagged ${ids.length} note${ids.length === 1 ? '' : 's'} with #${tag}`);
+    this.selectedIds.clear(); this.selectMode = false;
+    Router.render();
+  },
+  async bulkMove() {
+    const topicId = document.getElementById('notesBulkMoveTopic')?.value;
+    if (!topicId) { toast('Pick a topic first'); return; }
+    const topic = (Cache.topics || []).find(t => t.id === topicId);
+    const chapter = topic ? (Cache.chapters || []).find(c => c.id === topic.chapterId) : null;
+    const ids = Array.from(this.selectedIds);
+    for (const id of ids) {
+      const n = Cache.notes.find(x => x.id === id);
+      if (!n) continue;
+      n.topicId = topicId; n.chapterId = chapter?.id; n.subjectId = chapter?.subjectId;
+      await saveItem('notes', n);
+    }
+    toast(`Moved ${ids.length} note${ids.length === 1 ? '' : 's'} to ${topic?.name || 'the topic'}`);
+    this.selectedIds.clear(); this.selectMode = false;
+    Router.render();
+  },
+  async bulkDelete() {
+    const ids = Array.from(this.selectedIds);
+    if (!ids.length) return;
+    if (!confirm(`Move ${ids.length} note${ids.length === 1 ? '' : 's'} to Trash?`)) return;
+    for (const id of ids) await trashItem('notes', id);
+    toast(`Moved ${ids.length} note${ids.length === 1 ? '' : 's'} to Trash`);
+    this.selectedIds.clear(); this.selectMode = false;
+    Router.render();
+  }
+};
 function TopicView(id) {
   const topic = (Cache.topics || []).find(t => t.id === id);
   if (!topic) return `<div class="empty-state"><h3>Topic not found</h3></div>`;
@@ -3404,6 +4214,7 @@ function TopicView(id) {
   const mnemonics = (Cache.mnemonics || []).filter(m => m.topicId === id);
   const questions = (Cache.questions || []).filter(q => q.topicId === id);
   const topicPdfs = (Cache.pdfs || []).filter(p => p.topicId === id);
+  const manualFlashcards = (Cache.flashcards || []).filter(f => f.sourceType === 'manual' && f.topicId === id);
   const relatedJargons = (Cache.jargons || []).filter(j => chapter && j.subjectId === chapter.subjectId);
   const relatedPdfs = (Cache.pdfs || []).filter(p => chapter && p.subjectId === chapter.subjectId && p.topicId !== id);
   return `
@@ -3423,18 +4234,34 @@ function TopicView(id) {
     <button class="btn sm secondary" onclick="Pdfs.promptUploadForTopic('${id}')" title="Upload a PDF and tie it directly to this topic">+ Import PDF</button>
     <button class="btn sm secondary" onclick="Mnemonics.promptNew('${id}')" title="Create a mnemonic linked to this topic">+ Mnemonic</button>
     <button class="btn sm secondary" onclick="Questions.promptNew('${id}')" title="Add a question linked to this topic">+ Question</button>
+    <button class="btn sm secondary" onclick="Flashcards.promptNew('${id}')" title="Create a standalone flashcard — for a fact that doesn't fit a mnemonic or question">+ Flashcard</button>
+    <button class="btn sm secondary" onclick="TopicQuiz.start('${id}')" title="Mixed self-test pulling together this topic's mnemonics, questions, and its subject's jargon">🎯 Quiz me</button>
   </div>
-  <h3>Notes <span class="subtle" style="font-weight:normal;font-size:12px;">(drag, or use ▲▼, to reorder)</span></h3>
+  <h3>Notes <span class="subtle" style="font-weight:normal;font-size:12px;">(drag, or use ▲▼, to reorder)</span>
+    ${notes.length ? `<button class="btn sm secondary" style="margin-left:8px;font-weight:normal;" onclick="TopicNotesBulk.toggleSelectMode()" title="${TopicNotesBulk.selectMode ? 'Exit multi-select' : 'Select multiple notes to tag, move, or delete together'}">${TopicNotesBulk.selectMode ? '✕ Cancel Select' : '☑ Select'}</button>` : ''}
+  </h3>
+  ${TopicNotesBulk.selectMode && TopicNotesBulk.selectedIds.size ? `<div class="card" style="margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+    <b>${TopicNotesBulk.selectedIds.size} selected</b>
+    <div class="note-meta-row">
+      <input type="text" id="notesBulkTag" placeholder="tag name" style="width:110px;" title="Tag to add to all selected notes">
+      <button class="btn sm secondary" onclick="TopicNotesBulk.bulkTag()" title="Add this tag to every selected note">+ Add tag</button>
+      <select id="notesBulkMoveTopic" title="Move all selected notes to this topic"><option value="">Move to topic…</option>${topicOptions()}</select>
+      <button class="btn sm secondary" onclick="TopicNotesBulk.bulkMove()" title="Move all selected notes to the chosen topic">Move</button>
+      <button class="btn sm danger" onclick="TopicNotesBulk.bulkDelete()" title="Move all selected notes to Trash">Delete selected</button>
+    </div>
+  </div>` : ''}
   ${notes.length ? notes.map(n => `<div class="list-row" draggable="true"
       ondragstart="Tree.dragStart(event,'note','${n.id}')" ondragover="Tree.allowDrop(event)"
       ondrop="Tree.onDrop(event,'note','notes','topicId','${id}','${n.id}')"
-      onclick="UI.nav('note',{id:'${n.id}'})" title="Open this note"><span>📝</span><div style="flex:1;">${esc(n.title)}</div><span onclick="event.stopPropagation();">${moveButtonsHTML('notes', 'topicId', id, n.id)}</span></div>`).join('') : `<div class="subtle">No notes yet.</div>`}
+      onclick="UI.nav('note',{id:'${n.id}'})" title="Open this note">${TopicNotesBulk.selectMode ? `<input type="checkbox" ${TopicNotesBulk.selectedIds.has(n.id) ? 'checked' : ''} onclick="event.stopPropagation();TopicNotesBulk.toggleSelect('${n.id}')" title="Select this note">` : '<span>📝</span>'}<div style="flex:1;">${esc(n.title)}</div><span onclick="event.stopPropagation();">${moveButtonsHTML('notes', 'topicId', id, n.id)}</span></div>`).join('') : `<div class="subtle">No notes yet.</div>`}
   <h3 style="margin-top:18px;">PDFs</h3>
   ${topicPdfs.length ? topicPdfs.map(p => `<div class="list-row" onclick="UI.nav('pdf',{id:'${p.id}'})" title="Open this PDF"><span>📄</span><div style="flex:1;">${esc(p.title)}${p.pageCount ? `<div class="subtle">${p.pageCount} page${p.pageCount === 1 ? '' : 's'}</div>` : ''}</div></div>`).join('') : `<div class="subtle">None yet — click "+ Import PDF" above to add one right here.</div>`}
   <h3 style="margin-top:18px;">Mnemonics</h3>
   ${mnemonics.length ? mnemonics.map(m => `<div class="card" style="margin-bottom:8px;"><b>${esc(m.title)}</b> — <span class="pill">${esc(m.mnemonicText)}</span></div>`).join('') : `<div class="subtle">None yet.</div>`}
   <h3 style="margin-top:18px;">Questions</h3>
   ${questions.length ? questions.map(q => `<div class="subtle" style="margin-bottom:6px;">❓ ${esc(q.questionText)}</div>`).join('') : `<div class="subtle">None yet.</div>`}
+  <h3 style="margin-top:18px;">Flashcards</h3>
+  ${manualFlashcards.length ? manualFlashcards.map(f => `<div class="list-row"><span>🃏</span><div style="flex:1;">${esc(f.front)}</div><span class="del-mini" onclick="Flashcards.deleteManual('${f.id}')" title="Delete this flashcard">✕</span></div>`).join('') : `<div class="subtle">None yet — click "+ Flashcard" above for a standalone fact (mnemonics and questions already get their own automatically).</div>`}
   ${(relatedJargons.length || relatedPdfs.length) ? `<h3 style="margin-top:18px;">Related (same subject, other topics)</h3>
   ${relatedJargons.map(j => `<div class="subtle" style="cursor:pointer;" onclick="UI.nav('jargons')" title="Open Jargons">🔤 ${esc(j.term)}</div>`).join('')}
   ${relatedPdfs.map(p => `<div class="subtle" style="cursor:pointer;" onclick="UI.nav('pdf',{id:'${p.id}'})" title="Open this PDF">📄 ${esc(p.title)}</div>`).join('')}` : ''}
@@ -3461,6 +4288,9 @@ const Router = {
       case 'revision': html = RevisionView.render(); break;
       case 'exam': html = ExamMode.render(); break;
       case 'lmr': html = LMR.render(); break;
+      case 'inbox': html = InboxView.render(); break;
+      case 'cloze': html = Cloze.render(); break;
+      case 'topicquiz': html = TopicQuiz.render(); break;
       case 'bookmarks': html = Bookmarks.render(); break;
       case 'focus': html = Timer.render(); break;
       case 'trash': html = TrashView.render(); break;
@@ -3470,6 +4300,7 @@ const Router = {
     el.className = 'content' + (['note', 'subjects'].includes(UI.route) ? '' : ' narrow');
     el.innerHTML = html;
     updateRevBadge();
+    updateInboxBadge();
   }
 };
 
@@ -3541,7 +4372,8 @@ document.addEventListener('keydown', (e) => {
   const mod = e.metaKey || e.ctrlKey;
   if (mod && e.key.toLowerCase() === 'k') { e.preventDefault(); CmdK.open(); }
   else if (mod && e.key.toLowerCase() === 'n') { e.preventDefault(); Notes.promptNew(); }
-  else if (e.key === 'Escape') { CmdK.close(); Modal.close(); if (Focus.active) Focus.exit(); }
+  else if (mod && e.key.toLowerCase() === 'j') { e.preventDefault(); QuickCapture.open(); }
+  else if (e.key === 'Escape') { CmdK.close(); QuickCapture.close(); Modal.close(); if (Focus.active) Focus.exit(); }
 });
 
 /* ============================== BOOT ============================== */
