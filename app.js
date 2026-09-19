@@ -20,7 +20,24 @@ function relTime(iso) {
   return Math.floor(hrs / 24) + 'd ago';
 }
 const esc = (s) => (s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
+// Standard debounce, but the returned function also carries a .flush()
+// method that immediately runs the pending call (if any) and cancels the
+// timer. Without this, a debounced autosave (Notes.onEdit and friends) can
+// silently lose the last few hundred ms of edits whenever the tab is
+// backgrounded, closed, or the OS kills the page before the timer fires —
+// very common on mobile PWAs. See the visibilitychange/pagehide flush below.
+const debounce = (fn, ms) => {
+  let t, pending = null;
+  const wrapped = (...a) => {
+    pending = a;
+    clearTimeout(t);
+    t = setTimeout(() => { pending = null; fn(...a); }, ms);
+  };
+  wrapped.flush = () => {
+    if (pending) { clearTimeout(t); const a = pending; pending = null; fn(...a); }
+  };
+  return wrapped;
+};
 const daysFromNow = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString(); };
 const isPastOrToday = (iso) => !iso || new Date(iso) <= new Date(new Date().toDateString() + ' 23:59:59');
 function stripHtml(html) {
@@ -4375,6 +4392,18 @@ document.addEventListener('keydown', (e) => {
   else if (mod && e.key.toLowerCase() === 'j') { e.preventDefault(); QuickCapture.open(); }
   else if (e.key === 'Escape') { CmdK.close(); QuickCapture.close(); Modal.close(); if (Focus.active) Focus.exit(); }
 });
+// The moment the tab is backgrounded, closed, or the OS is about to suspend
+// it, force any pending debounced note/title save to run right now instead
+// of waiting out its timer — on mobile in particular, a backgrounded PWA can
+// be frozen or killed at any point with no further warning, and 'hidden' is
+// the one signal that's reliably delivered before that happens.
+function flushPendingSaves() {
+  try { Notes.onEdit.flush(); } catch (e) { /* ignore */ }
+  try { Notes.updateTitle.flush(); } catch (e) { /* ignore */ }
+  try { Pdfs.onSplitEdit.flush(); } catch (e) { /* ignore */ }
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushPendingSaves(); });
+window.addEventListener('pagehide', flushPendingSaves);
 
 /* ============================== BOOT ============================== */
 async function boot() {
