@@ -20,6 +20,63 @@ function relTime(iso) {
   return Math.floor(hrs / 24) + 'd ago';
 }
 const esc = (s) => (s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+// A small, consistent set of line icons (24x24, stroke-based) standing in
+// for raw emoji throughout the app. Emoji render differently per OS/browser,
+// can't be recolored to match the theme, and read as placeholder — a single
+// crafted icon language is one of the biggest levers for a premium feel.
+const ICONS = {
+  home: '<path d="M4 11.5 12 4l8 7.5"/><path d="M6 10v9a1 1 0 0 0 1 1h3v-6h4v6h3a1 1 0 0 0 1-1v-9"/>',
+  inbox: '<path d="M4 12h4l2 3h4l2-3h4"/><path d="M4 12 5.5 5a1 1 0 0 1 1-.8h11a1 1 0 0 1 1 .8L20 12v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/>',
+  layers: '<path d="M12 4 3 9l9 5 9-5z"/><path d="M3 14l9 5 9-5"/>',
+  search: '<circle cx="10.5" cy="10.5" r="6.5"/><line x1="20" y1="20" x2="15.3" y2="15.3"/>',
+  chart: '<line x1="5" y1="20" x2="5" y2="12"/><line x1="12" y1="20" x2="12" y2="7"/><line x1="19" y1="20" x2="19" y2="15"/><line x1="3" y1="20" x2="21" y2="20"/>',
+  fileText: '<path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="16.5" x2="15" y2="16.5"/>',
+  file: '<path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5"/>',
+  helpCircle: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9.2a2.5 2.5 0 1 1 3.7 2.3c-.9.5-1.2 1-1.2 2"/><line x1="12" y1="17" x2="12" y2="17.1"/>',
+  refresh: '<path d="M4 10a8 8 0 0 1 14-4.9M20 5v5h-5"/><path d="M20 14a8 8 0 0 1-14 4.9M4 19v-5h5"/>',
+  cap: '<path d="M2 9.5 12 5l10 4.5-10 4.5z"/><path d="M6 12v5c0 1 2.7 2.5 6 2.5s6-1.5 6-2.5v-5"/><path d="M22 9.5v5.5"/>',
+  zap: '<polygon points="13 2 4 14 11 14 10 22 20 10 13 10"/>',
+  brain: '<path d="M9 4.5a2.5 2.5 0 0 0-2.4 3.3A2.6 2.6 0 0 0 5 10.3v.2A2.6 2.6 0 0 0 4 12.5 2.6 2.6 0 0 0 5.3 14.7 2.5 2.5 0 0 0 7.5 18.5a2.4 2.4 0 0 0 1-.2A2.5 2.5 0 0 0 11 20a2.5 2.5 0 0 0 2.5-2.5v-10A2.5 2.5 0 0 0 11 5a2.4 2.4 0 0 0-2-.5z"/><path d="M15 4.5a2.5 2.5 0 0 1 2.4 3.3A2.6 2.6 0 0 1 19 10.3v.2a2.6 2.6 0 0 1 1 2 2.6 2.6 0 0 1-1.3 2.2 2.5 2.5 0 0 1-2.2 3.8 2.4 2.4 0 0 1-1-.2A2.5 2.5 0 0 1 13 17.5v-10A2.5 2.5 0 0 1 15.5 5a2.4 2.4 0 0 1-.5-.5z"/>',
+  book: '<path d="M4 19.5V6a2 2 0 0 1 2-2h13v15H6a2 2 0 0 0 0 4h13"/><line x1="9" y1="8" x2="15" y2="8"/>',
+  bookmark: '<path d="M6 3h12v18l-6-4.5L6 21z"/>',
+  clock: '<circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/>',
+  trash: '<line x1="4" y1="7" x2="20" y2="7"/><path d="M6 7v13a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V7"/><path d="M9 7V4.5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1V7"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>',
+  settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 13.5a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.9 2.9l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.9-2.9l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1h-.2a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.6-1.1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.9-2.9l.1.1a1.7 1.7 0 0 0 1.9.3h.1a1.7 1.7 0 0 0 1-1.6v-.2a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.9 2.9l-.1.1a1.7 1.7 0 0 0-.3 1.9v.1a1.7 1.7 0 0 0 1.6 1h.2a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.6 1z"/>',
+  plus: '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
+  moon: '<path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5z"/>',
+  cloud: '<path d="M7 18a4.5 4.5 0 0 1-.5-9 5.5 5.5 0 0 1 10.7-2A4.5 4.5 0 0 1 17 18z"/>',
+  x: '<line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/>',
+  xCircle: '<circle cx="12" cy="12" r="9"/><line x1="9" y1="9" x2="15" y2="15"/><line x1="15" y1="9" x2="9" y2="15"/>',
+  check: '<polyline points="5 12.5 10 17 19 7"/>',
+  checkCircle: '<circle cx="12" cy="12" r="9"/><polyline points="7.5 12.5 10.5 15.5 16.5 8.5"/>',
+  target: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/>',
+  card: '<rect x="3" y="6" width="18" height="13" rx="2"/><line x1="3" y1="10.5" x2="21" y2="10.5"/>',
+  link: '<path d="M9.5 14.5 14.5 9.5"/><path d="M11 6.5 12.6 4.9a3.5 3.5 0 0 1 5 5L16 11.5"/><path d="M13 17.5 11.4 19.1a3.5 3.5 0 0 1-5-5L8 12.5"/>',
+  scissors: '<circle cx="6" cy="6" r="2.3"/><circle cx="6" cy="18" r="2.3"/><line x1="20" y1="4" x2="7.6" y2="14.5"/><line x1="20" y1="20" x2="7.6" y2="9.5"/>',
+  arrowUp: '<line x1="12" y1="19" x2="12" y2="6"/><polyline points="6.5 11.5 12 6 17.5 11.5"/>',
+  arrowDown: '<line x1="12" y1="5" x2="12" y2="18"/><polyline points="6.5 12.5 12 18 17.5 12.5"/>',
+  arrowRight: '<line x1="4" y1="12" x2="19" y2="12"/><polyline points="13 6 19 12 13 18"/>',
+  checkSquare: '<path d="M9 12.5 11.5 15 17 8.5"/><rect x="3.5" y="3.5" width="17" height="17" rx="3"/>',
+  bulb: '<path d="M9 18h6"/><path d="M10 21h4"/><path d="M12 3a6.5 6.5 0 0 0-3.8 11.8c.5.4.8 1 .8 1.7v.5h6v-.5c0-.7.3-1.3.8-1.7A6.5 6.5 0 0 0 12 3z"/>',
+  undo: '<path d="M4 10h9a5.5 5.5 0 0 1 0 11h-2"/><polyline points="8 5 4 10 8 15"/>',
+  redo: '<path d="M20 10h-9a5.5 5.5 0 0 0 0 11h2"/><polyline points="16 5 20 10 16 15"/>',
+  repeat: '<path d="M17 2.5 20.5 6 17 9.5"/><path d="M3.5 12V9a3 3 0 0 1 3-3h14"/><path d="M7 21.5 3.5 18 7 14.5"/><path d="M20.5 12v3a3 3 0 0 1-3 3h-14"/>',
+  star: '<polygon points="12 3 14.7 8.9 21 9.6 16.3 13.9 17.6 20.3 12 17 6.4 20.3 7.7 13.9 3 9.6 9.3 8.9"/>',
+  grid: '<rect x="3.5" y="3.5" width="7" height="7" rx="1.2"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.2"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.2"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.2"/>',
+  list: '<line x1="4" y1="6.5" x2="20" y2="6.5"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17.5" x2="20" y2="17.5"/>',
+  expand: '<polyline points="9 3 3 3 3 9"/><polyline points="15 3 21 3 21 9"/><polyline points="3 15 3 21 9 21"/><polyline points="21 15 21 21 15 21"/>',
+  menu: '<line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/>',
+  party: '<path d="M4 20 15 9"/><path d="M13 4.5 15.5 7"/><path d="M17.5 3 19 4.5"/><path d="M17 8 19.5 10.5"/><path d="M4 20l3.5-1L6 15.5z"/><circle cx="9.5" cy="6.5" r="1"/><circle cx="19.5" cy="14.5" r="1"/>',
+  message: '<path d="M4 5.5h16v11H9l-4 3.5v-3.5H4z"/>',
+  flame: '<path d="M12 3s3 3 3 6.5A3 3 0 0 1 9 9.5C9 12 6 13 6 16a6 6 0 0 0 12 0c0-4-2-5-2-8 0 0-1 2-2 2s1-4-2-7z"/>',
+  download: '<path d="M12 4v11"/><polyline points="7.5 11 12 15.5 16.5 11"/><path d="M5 18.5h14"/>',
+  edit: '<path d="M14.5 5.5 18.5 9.5"/><path d="M4 20l.8-4L16 4.8a1.6 1.6 0 0 1 2.3 0l.9.9a1.6 1.6 0 0 1 0 2.3L8 19.2z"/>',
+};
+function icon(name, size) {
+  const s = size || 16;
+  return `<svg class="ico" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ''}</svg>`;
+}
 // Standard debounce, but the returned function also carries a .flush()
 // method that immediately runs the pending call (if any) and cancels the
 // timer. Without this, a debounced autosave (Notes.onEdit and friends) can
@@ -71,8 +128,8 @@ function richTextExtrasHTML() {
     <input type="color" onmousedown="saveEditorSelection()" onchange="applyColorToSelection(this.value)" title="Custom text color" style="width:22px;height:22px;padding:0;border:1px solid var(--border);border-radius:6px;background:none;cursor:pointer;vertical-align:middle;">
     <button onmousedown="event.preventDefault();document.execCommand('foreColor',false,getComputedStyle(document.body).color)" title="Reset text color to default">Aa</button>
     <div class="sep"></div>
-    <button onmousedown="event.preventDefault();document.execCommand('undo')" title="Undo (Ctrl/Cmd+Z)">↶ Undo</button>
-    <button onmousedown="event.preventDefault();document.execCommand('redo')" title="Redo (Ctrl/Cmd+Shift+Z, or Ctrl+Y)">↷ Redo</button>`;
+    <button onmousedown="event.preventDefault();document.execCommand('undo')" title="Undo (Ctrl/Cmd+Z)"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10h9a5.5 5.5 0 0 1 0 11h-2"/><polyline points="8 5 4 10 8 15"/></svg> Undo</button>
+    <button onmousedown="event.preventDefault();document.execCommand('redo')" title="Redo (Ctrl/Cmd+Shift+Z, or Ctrl+Y)"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 10h-9a5.5 5.5 0 0 0 0 11h2"/><polyline points="16 5 20 10 16 15"/></svg> Redo</button>`;
 }
 /* Selecting text that crosses multiple lines can produce a Range whose exact
    pixel boundary lands mid-glyph on the last word of a line — getClientRects()
@@ -411,12 +468,12 @@ const UI = {
   newQuick() {
     Modal.open('Quick Add', `
       <div style="display:flex;flex-direction:column;gap:8px;">
-        <button class="btn secondary" onclick="Modal.close();Notes.promptNew();" title="Create a new note">📝 New Note</button>
-        <button class="btn secondary" onclick="Modal.close();UI.nav('pdfs');" title="Go to the PDF library to upload one">📄 Import PDF</button>
-        <button class="btn secondary" onclick="Modal.close();Mnemonics.promptNew();" title="Create a new memory aid">🧠 Add Mnemonic</button>
-        <button class="btn secondary" onclick="Modal.close();Jargons.promptNew();" title="Add a term, keyword or abbreviation">🔤 Add Jargon</button>
-        <button class="btn secondary" onclick="Modal.close();Questions.promptNew();" title="Add a question to your question bank">❓ Add Question</button>
-        <button class="btn secondary" onclick="Modal.close();Notes.importFile();" title="Turn a text, Markdown or HTML file into a note">📥 Import file as Note (.txt/.md/.html)</button>
+        <button class="btn secondary" onclick="Modal.close();Notes.promptNew();" title="Create a new note"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="16.5" x2="15" y2="16.5"/></svg> New Note</button>
+        <button class="btn secondary" onclick="Modal.close();UI.nav('pdfs');" title="Go to the PDF library to upload one"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5"/></svg> Import PDF</button>
+        <button class="btn secondary" onclick="Modal.close();Mnemonics.promptNew();" title="Create a new memory aid"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4.5a2.5 2.5 0 0 0-2.4 3.3A2.6 2.6 0 0 0 5 10.3v.2A2.6 2.6 0 0 0 4 12.5 2.6 2.6 0 0 0 5.3 14.7 2.5 2.5 0 0 0 7.5 18.5a2.4 2.4 0 0 0 1-.2A2.5 2.5 0 0 0 11 20a2.5 2.5 0 0 0 2.5-2.5v-10A2.5 2.5 0 0 0 11 5a2.4 2.4 0 0 0-2-.5z"/><path d="M15 4.5a2.5 2.5 0 0 1 2.4 3.3A2.6 2.6 0 0 1 19 10.3v.2a2.6 2.6 0 0 1 1 2 2.6 2.6 0 0 1-1.3 2.2 2.5 2.5 0 0 1-2.2 3.8 2.4 2.4 0 0 1-1-.2A2.5 2.5 0 0 1 13 17.5v-10A2.5 2.5 0 0 1 15.5 5a2.4 2.4 0 0 1-.5-.5z"/></svg> Add Mnemonic</button>
+        <button class="btn secondary" onclick="Modal.close();Jargons.promptNew();" title="Add a term, keyword or abbreviation"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5V6a2 2 0 0 1 2-2h13v15H6a2 2 0 0 0 0 4h13"/><line x1="9" y1="8" x2="15" y2="8"/></svg> Add Jargon</button>
+        <button class="btn secondary" onclick="Modal.close();Questions.promptNew();" title="Add a question to your question bank"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.2a2.5 2.5 0 1 1 3.7 2.3c-.9.5-1.2 1-1.2 2"/><line x1="12" y1="17" x2="12" y2="17.1"/></svg> Add Question</button>
+        <button class="btn secondary" onclick="Modal.close();Notes.importFile();" title="Turn a text, Markdown or HTML file into a note"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12h4l2 3h4l2-3h4"/><path d="M4 12 5.5 5a1 1 0 0 1 1-.8h11a1 1 0 0 1 1 .8L20 12v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/></svg> Import file as Note (.txt/.md/.html)</button>
       </div>`, true);
   }
 };
@@ -695,7 +752,7 @@ const SubjectsHub = {
   renderOverview() {
     const courses = Cache.courses || [];
     if (!courses.length) return `<div class="empty-state">
-      <div style="font-size:38px;">📚</div>
+      <div style="font-size:38px;"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4 3 9l9 5 9-5z"/><path d="M3 14l9 5 9-5"/></svg></div>
       <h3>Welcome — let's set up your syllabus</h3>
       <p class="subtle" style="max-width:420px;margin:0 auto 18px;">Organize everything as Course → Subject → Chapter → Topic. You can start from scratch, or load a small worked example first to see how notes, mnemonics, questions, and flashcards all fit together.</p>
       <div class="note-meta-row" style="justify-content:center;">
@@ -745,7 +802,7 @@ const SubjectsHub = {
         <span>${notes.length} note${notes.length === 1 ? '' : 's'}</span>
         ${pdfs.length ? `<span>${pdfs.length} PDF${pdfs.length === 1 ? '' : 's'}</span>` : ''}
       </div>
-      <span class="del-mini" style="position:absolute;top:10px;right:10px;" onclick="event.stopPropagation();Courses.deleteSubject('${s.id}')" title="Delete this subject">✕</span>
+      <span class="del-mini" style="position:absolute;top:10px;right:10px;" onclick="event.stopPropagation();Courses.deleteSubject('${s.id}')" title="Delete this subject"><svg class="ico" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></span>
       <span style="position:absolute;top:10px;right:32px;" onclick="event.stopPropagation();">${moveButtonsHTML('subjects', 'courseId', s.courseId, s.id)}</span>
     </div>`;
   },
@@ -794,7 +851,7 @@ const SubjectsHub = {
       <span>📖</span>
       <div style="flex:1;">${esc(c.name)}<div class="subtle">${topics.length} topic${topics.length === 1 ? '' : 's'} · ${notes.length} note${notes.length === 1 ? '' : 's'}${pdfs.length ? ` · ${pdfs.length} PDF${pdfs.length === 1 ? '' : 's'}` : ''}</div></div>
       <span onclick="event.stopPropagation();">${moveButtonsHTML('chapters', 'subjectId', c.subjectId, c.id)}</span>
-      <span class="del-mini" onclick="event.stopPropagation();Courses.deleteChapter('${c.id}')" title="Delete this chapter">✕</span>
+      <span class="del-mini" onclick="event.stopPropagation();Courses.deleteChapter('${c.id}')" title="Delete this chapter"><svg class="ico" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></span>
     </div>`;
   },
   renderChapterDetail() {
@@ -820,10 +877,10 @@ const SubjectsHub = {
       ondragstart="Tree.dragStart(event,'topic','${t.id}')" ondragover="Tree.allowDrop(event)"
       ondrop="Tree.onDrop(event,'topic','topics','chapterId','${t.chapterId}','${t.id}')"
       onclick="UI.nav('topic',{id:'${t.id}'})" title="Open this topic">
-      <span>📄</span>
+      <span><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5"/></svg></span>
       <div style="flex:1;">${esc(t.name)}<div class="subtle">${notes.length} note${notes.length === 1 ? '' : 's'} · ${mnemonics.length} mnemonic${mnemonics.length === 1 ? '' : 's'} · ${questions.length} question${questions.length === 1 ? '' : 's'}${pdfs.length ? ` · ${pdfs.length} PDF${pdfs.length === 1 ? '' : 's'}` : ''}</div></div>
       <span onclick="event.stopPropagation();">${moveButtonsHTML('topics', 'chapterId', t.chapterId, t.id)}</span>
-      <span class="del-mini" onclick="event.stopPropagation();Courses.deleteTopic('${t.id}')" title="Delete this topic">✕</span>
+      <span class="del-mini" onclick="event.stopPropagation();Courses.deleteTopic('${t.id}')" title="Delete this topic"><svg class="ico" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></span>
     </div>`;
   }
 };
@@ -1056,12 +1113,12 @@ const Notes = {
           <div class="sep"></div>
           <button onclick="document.execCommand('insertUnorderedList')" title="Bullet list">• List</button>
           <button onclick="document.execCommand('insertOrderedList')" title="Numbered list">1. List</button>
-          <button onclick="Notes.insertChecklist('${id}')" title="Insert a checklist item — click again for more">☑ Checklist</button>
+          <button onclick="Notes.insertChecklist('${id}')" title="Insert a checklist item — click again for more"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 12.5 11.5 15 17 8.5"/><rect x="3.5" y="3.5" width="17" height="17" rx="3"/></svg> Checklist</button>
           <button onclick="document.execCommand('formatBlock',false,'BLOCKQUOTE')" title="Quote block — for asides or exact wording">❝ Quote</button>
           <button onclick="document.execCommand('insertHorizontalRule')" title="Horizontal rule — divides the note into sections">―</button>
           <div class="sep"></div>
           <button onclick="Notes.insertTable('${id}')" title="Insert a 2×2 table">▦ Table</button>
-          <button onclick="Notes.insertLink()" title="Turn selected text into a link">🔗 Link</button>
+          <button onclick="Notes.insertLink()" title="Turn selected text into a link"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.5 14.5 14.5 9.5"/><path d="M11 6.5 12.6 4.9a3.5 3.5 0 0 1 5 5L16 11.5"/><path d="M13 17.5 11.4 19.1a3.5 3.5 0 0 1-5-5L8 12.5"/></svg> Link</button>
           <button onclick="Notes.promptTemplate('${id}')" title="Insert a ready-made structure — case law summary, amendment tracker, or rates table">📋 Template</button>
           <div class="sep"></div>
           <button onclick="Focus.enter()" title="Focus Mode — hide the sidebar and menus for distraction-free writing (Esc to exit)">🕶 Focus</button>
@@ -1074,12 +1131,12 @@ const Notes = {
         <div class="block">
           <h4>Highlight legend</h4>
           ${colors.map(c => `<span class="tag" style="border-color:${c.color}"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${c.color};margin-right:4px;"></span>${c.label}</span>`).join('')}
-          <button class="btn sm secondary" style="margin-top:8px;" onclick="Cloze.start('${id}')" title="Turn this note's highlights into fill-in-the-blank recall cards">📇 Cloze Review</button>
+          <button class="btn sm secondary" style="margin-top:8px;" onclick="Cloze.start('${id}')" title="Turn this note's highlights into fill-in-the-blank recall cards"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="2"/><line x1="3" y1="10.5" x2="21" y2="10.5"/></svg> Cloze Review</button>
         </div>
         <div class="block">
           <h4>Annotations (${annots.length})</h4>
           ${annots.length ? annots.map(a => `<div class="card" style="padding:8px;margin-bottom:6px;font-size:13px;"><b>${esc(a.type)}</b>: ${esc(a.comment)}
-            <div style="text-align:right;"><button class="btn sm secondary" onclick="Notes.deleteAnnotation('${a.id}','${id}')" title="Delete this annotation">✕</button></div></div>`).join('') : `<div class="subtle">None yet — select text to annotate.</div>`}
+            <div style="text-align:right;"><button class="btn sm secondary" onclick="Notes.deleteAnnotation('${a.id}','${id}')" title="Delete this annotation"><svg class="ico" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button></div></div>`).join('') : `<div class="subtle">None yet — select text to annotate.</div>`}
         </div>
         <div class="block">
           <h4>Revision</h4>
@@ -1092,28 +1149,28 @@ const Notes = {
         </div>
         <div class="block">
           <h4>Linked mnemonics</h4>
-          ${linkedMnemonics.length ? linkedMnemonics.map(m => `<div class="subtle">🧠 ${esc(m.title)}</div>`).join('') : `<div class="subtle">None linked.</div>`}
+          ${linkedMnemonics.length ? linkedMnemonics.map(m => `<div class="subtle"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4.5a2.5 2.5 0 0 0-2.4 3.3A2.6 2.6 0 0 0 5 10.3v.2A2.6 2.6 0 0 0 4 12.5 2.6 2.6 0 0 0 5.3 14.7 2.5 2.5 0 0 0 7.5 18.5a2.4 2.4 0 0 0 1-.2A2.5 2.5 0 0 0 11 20a2.5 2.5 0 0 0 2.5-2.5v-10A2.5 2.5 0 0 0 11 5a2.4 2.4 0 0 0-2-.5z"/><path d="M15 4.5a2.5 2.5 0 0 1 2.4 3.3A2.6 2.6 0 0 1 19 10.3v.2a2.6 2.6 0 0 1 1 2 2.6 2.6 0 0 1-1.3 2.2 2.5 2.5 0 0 1-2.2 3.8 2.4 2.4 0 0 1-1-.2A2.5 2.5 0 0 1 13 17.5v-10A2.5 2.5 0 0 1 15.5 5a2.4 2.4 0 0 1-.5-.5z"/></svg> ${esc(m.title)}</div>`).join('') : `<div class="subtle">None linked.</div>`}
           <button class="btn sm secondary" style="margin-top:6px;" onclick="Mnemonics.promptNew('${note.topicId}')" title="Create a mnemonic for this topic">+ Add mnemonic</button>
         </div>
         <div class="block">
           <h4>Linked questions</h4>
-          ${linkedQuestions.length ? linkedQuestions.map(q => `<div class="subtle">❓ ${esc(q.questionText.slice(0, 40))}…</div>`).join('') : `<div class="subtle">None linked.</div>`}
+          ${linkedQuestions.length ? linkedQuestions.map(q => `<div class="subtle"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.2a2.5 2.5 0 1 1 3.7 2.3c-.9.5-1.2 1-1.2 2"/><line x1="12" y1="17" x2="12" y2="17.1"/></svg> ${esc(q.questionText.slice(0, 40))}…</div>`).join('') : `<div class="subtle">None linked.</div>`}
           <button class="btn sm secondary" style="margin-top:6px;" onclick="Questions.promptNew('${note.topicId}')" title="Add a question for this topic">+ Add question</button>
         </div>
         <div class="block">
           <h4>Related content</h4>
-          ${relatedJargons.length ? relatedJargons.map(j => `<div class="subtle" style="cursor:pointer;" onclick="UI.nav('jargons')" title="Open Jargons">🔤 ${esc(j.term)}</div>`).join('') : ''}
-          ${relatedPdfs.length ? relatedPdfs.map(p => `<div class="subtle" style="cursor:pointer;" onclick="UI.nav('pdf',{id:'${p.id}'})" title="Open this PDF">📄 ${esc(p.title)}</div>`).join('') : ''}
+          ${relatedJargons.length ? relatedJargons.map(j => `<div class="subtle" style="cursor:pointer;" onclick="UI.nav('jargons')" title="Open Jargons"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5V6a2 2 0 0 1 2-2h13v15H6a2 2 0 0 0 0 4h13"/><line x1="9" y1="8" x2="15" y2="8"/></svg> ${esc(j.term)}</div>`).join('') : ''}
+          ${relatedPdfs.length ? relatedPdfs.map(p => `<div class="subtle" style="cursor:pointer;" onclick="UI.nav('pdf',{id:'${p.id}'})" title="Open this PDF"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5"/></svg> ${esc(p.title)}</div>`).join('') : ''}
           ${(!relatedJargons.length && !relatedPdfs.length) ? '<div class="subtle">Nothing else tagged to this subject yet.</div>' : ''}
         </div>
         <div class="block">
           <h4>Export &amp; history</h4>
-          <button class="btn sm secondary" onclick="Notes.exportMarkdown('${id}')" title="Download this note as a Markdown file">⬇ Markdown</button>
-          <button class="btn sm secondary" onclick="Notes.exportHtml('${id}')" title="Download this note as an HTML file">⬇ HTML</button>
+          <button class="btn sm secondary" onclick="Notes.exportMarkdown('${id}')" title="Download this note as a Markdown file"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><polyline points="7.5 11 12 15.5 16.5 11"/><path d="M5 18.5h14"/></svg> Markdown</button>
+          <button class="btn sm secondary" onclick="Notes.exportHtml('${id}')" title="Download this note as an HTML file"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><polyline points="7.5 11 12 15.5 16.5 11"/><path d="M5 18.5h14"/></svg> HTML</button>
           <button class="btn sm secondary" style="margin-top:6px;" onclick="Notes.showHistory('${id}')" title="See and restore earlier versions of this note">🕘 Version history</button>
         </div>
         <div class="block">
-          <button class="btn secondary sm" onclick="Bookmarks.add('note','${id}','${esc(note.title)}')" title="Save this note to your Bookmarks">🔖 Bookmark this note</button>
+          <button class="btn secondary sm" onclick="Bookmarks.add('note','${id}','${esc(note.title)}')" title="Save this note to your Bookmarks"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h12v18l-6-4.5L6 21z"/></svg> Bookmark this note</button>
           <button class="btn danger sm" style="margin-top:6px;" onclick="Notes.remove('${id}')" title="Move this note to Trash">Delete note</button>
         </div>
       </div>
@@ -1257,8 +1314,8 @@ const Notes = {
       <p class="subtle">Choose a starting structure — it's inserted at your cursor, or at the end if nothing was selected.</p>
       <div style="display:flex;flex-direction:column;gap:8px;">
         <button class="btn secondary" onclick="Notes.insertTemplate('${noteId}','caselaw')" title="Citation, facts, issue, holding, ratio">📜 Case Law Summary</button>
-        <button class="btn secondary" onclick="Notes.insertTemplate('${noteId}','amendment')" title="Section-wise before/after amendment tracker">📝 Amendment Tracker</button>
-        <button class="btn secondary" onclick="Notes.insertTemplate('${noteId}','rates')" title="A table for rates, thresholds, or limits">📊 Rates / Thresholds Table</button>
+        <button class="btn secondary" onclick="Notes.insertTemplate('${noteId}','amendment')" title="Section-wise before/after amendment tracker"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="16.5" x2="15" y2="16.5"/></svg> Amendment Tracker</button>
+        <button class="btn secondary" onclick="Notes.insertTemplate('${noteId}','rates')" title="A table for rates, thresholds, or limits"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="5" y1="20" x2="5" y2="12"/><line x1="12" y1="20" x2="12" y2="7"/><line x1="19" y1="20" x2="19" y2="15"/><line x1="3" y1="20" x2="21" y2="20"/></svg> Rates / Thresholds Table</button>
       </div>
       <div class="modal-actions" style="margin-top:10px;"><button class="btn secondary" onclick="Modal.close()" title="Cancel">Cancel</button></div>`);
   },
@@ -1325,7 +1382,7 @@ const Notes = {
     bar.style.top = (rect.top + window.scrollY - 40) + 'px';
     bar.style.left = (rect.left + window.scrollX) + 'px';
     bar.innerHTML = colors.map(c => `<button title="${esc(c.label)}" onmousedown="event.preventDefault();Notes.highlight('${c.key}')">${['🟡','🟢','🔵','🔴','🟣','🟠'][colors.indexOf(c)] || '●'}</button>`).join('')
-      + `<button onmousedown="event.preventDefault();Notes.annotate('${noteId}')">💬 Note</button>`;
+      + `<button onmousedown="event.preventDefault();Notes.annotate('${noteId}')"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5.5h16v11H9l-4 3.5v-3.5H4z"/></svg> Note</button>`;
     document.body.appendChild(bar);
   },
   highlight(colorKey) {
@@ -1361,7 +1418,7 @@ const Notes = {
     await saveItem('annotations', { id: uid(), targetType: 'note', targetId: noteId, type: 'comment', text: text.slice(0, 80), comment, createdAt: nowISO() });
     if (range) {
       try {
-        const span = document.createElement('span'); span.className = 'annot-flag'; span.title = comment; span.textContent = '💬';
+        const span = document.createElement('span'); span.className = 'annot-flag'; span.title = comment; span.innerHTML = '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5.5h16v11H9l-4 3.5v-3.5H4z"/></svg>';
         range.collapse(false); range.insertNode(span);
         Notes.onEdit(noteId); // the flag span is a real DOM change — make sure it actually gets saved
       } catch (e) { /* selection's underlying nodes changed since capture — skip the inline flag, the annotation itself is still saved */ }
@@ -1431,7 +1488,7 @@ const Mnemonics = {
   },
   render() {
     const items = Cache.mnemonics || [];
-    if (!items.length) return emptyState('🧠', 'Build your memory bank.', 'Create Mnemonic', "Mnemonics.promptNew()");
+    if (!items.length) return emptyState('<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4.5a2.5 2.5 0 0 0-2.4 3.3A2.6 2.6 0 0 0 5 10.3v.2A2.6 2.6 0 0 0 4 12.5 2.6 2.6 0 0 0 5.3 14.7 2.5 2.5 0 0 0 7.5 18.5a2.4 2.4 0 0 0 1-.2A2.5 2.5 0 0 0 11 20a2.5 2.5 0 0 0 2.5-2.5v-10A2.5 2.5 0 0 0 11 5a2.4 2.4 0 0 0-2-.5z"/><path d="M15 4.5a2.5 2.5 0 0 1 2.4 3.3A2.6 2.6 0 0 1 19 10.3v.2a2.6 2.6 0 0 1 1 2 2.6 2.6 0 0 1-1.3 2.2 2.5 2.5 0 0 1-2.2 3.8 2.4 2.4 0 0 1-1-.2A2.5 2.5 0 0 1 13 17.5v-10A2.5 2.5 0 0 1 15.5 5a2.4 2.4 0 0 1-.5-.5z"/></svg>', 'Build your memory bank.', 'Create Mnemonic', "Mnemonics.promptNew()");
     return `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
       <h2 style="margin:0;">Mnemonics</h2><button class="btn" onclick="Mnemonics.promptNew()" title="Create a new memory aid">+ New Mnemonic</button></div>
       <div class="grid cols-3">${items.map(m => { const fc = Flashcards.findFor('mnemonic', m.id); return `
@@ -1441,7 +1498,7 @@ const Mnemonics = {
         <div class="pill" style="margin:6px 0;">${esc(m.mnemonicText)}</div>
         <div class="subtle" style="white-space:pre-line;">${esc(m.meaning)}</div>
         <div class="subtle" style="margin-top:8px;">Topic: ${topicName(m.topicId)}</div>
-        <div class="subtle">🃏 ${fc && fc.nextDate ? 'Next revision: ' + fmtDateShort(fc.nextDate) : 'Flashcard not yet reviewed'}</div>
+        <div class="subtle"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="2"/><line x1="3" y1="10.5" x2="21" y2="10.5"/></svg> ${fc && fc.nextDate ? 'Next revision: ' + fmtDateShort(fc.nextDate) : 'Flashcard not yet reviewed'}</div>
         <div style="text-align:right;margin-top:8px;"><button class="btn sm secondary" onclick="Mnemonics.remove('${m.id}')" title="Delete this mnemonic">Delete</button></div>
       </div>`; }).join('')}</div>`;
   }
@@ -1470,13 +1527,13 @@ const Jargons = {
   async remove(id) { if (!confirm('Delete this term?')) return; await trashItem('jargons', id); Router.render(); },
   render() {
     const items = Cache.jargons || [];
-    if (!items.length) return emptyState('🔤', 'Track tricky terms, keywords and abbreviations.', 'Add Jargon', "Jargons.promptNew()");
+    if (!items.length) return emptyState('<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5V6a2 2 0 0 1 2-2h13v15H6a2 2 0 0 0 0 4h13"/><line x1="9" y1="8" x2="15" y2="8"/></svg>', 'Track tricky terms, keywords and abbreviations.', 'Add Jargon', "Jargons.promptNew()");
     return `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
       <h2 style="margin:0;">Jargons & Keywords</h2><button class="btn" onclick="Jargons.promptNew()" title="Add a term, keyword or abbreviation">+ New Term</button></div>
       ${items.map(j => `<div class="card" style="margin-bottom:10px;">
         <div style="display:flex;justify-content:space-between;"><b>${esc(j.term)}</b><span class="pill ${j.importance === 'Must Memorize' ? 'warn' : ''}">${esc(j.importance)}</span></div>
         <div style="margin:6px 0;">${esc(j.meaning)}</div>
-        ${j.memoryTrick ? `<div class="subtle">💡 ${esc(j.memoryTrick)}</div>` : ''}
+        ${j.memoryTrick ? `<div class="subtle"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6"/><path d="M10 21h4"/><path d="M12 3a6.5 6.5 0 0 0-3.8 11.8c.5.4.8 1 .8 1.7v.5h6v-.5c0-.7.3-1.3.8-1.7A6.5 6.5 0 0 0 12 3z"/></svg> ${esc(j.memoryTrick)}</div>` : ''}
         <div class="subtle" style="margin-top:4px;">${subjectName(j.subjectId)}</div>
         <div style="text-align:right;"><button class="btn sm secondary" onclick="Jargons.remove('${j.id}')" title="Delete this term">Delete</button></div>
       </div>`).join('')}`;
@@ -1556,12 +1613,12 @@ const Questions = {
   visibleCount: 50,
   render() {
     const items = Cache.questions || [];
-    if (!items.length) return emptyState('❓', 'Build your question bank from past papers and practice.', 'Add Question', "Questions.promptNew()");
+    if (!items.length) return emptyState('<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.2a2.5 2.5 0 1 1 3.7 2.3c-.9.5-1.2 1-1.2 2"/><line x1="12" y1="17" x2="12" y2="17.1"/></svg>', 'Build your question bank from past papers and practice.', 'Add Question', "Questions.promptNew()");
     const shown = items.slice(0, this.visibleCount);
     const remaining = items.length - shown.length;
     const compact = Settings.get('listDensity') === 'compact';
     const densityBtn = `<button class="btn sm secondary" onclick="Settings.set('listDensity','${compact ? 'comfortable' : 'compact'}').then(()=>Router.render())" title="${compact ? 'Switch to a roomier, fully-expanded view' : 'Switch to a denser view that fits more questions on screen'}">${compact ? '▥ Comfortable' : '▤ Compact'}</button>`;
-    const selectBtn = `<button class="btn sm secondary" onclick="Questions.toggleSelectMode()" title="${this.selectMode ? 'Exit multi-select' : 'Select multiple questions to move or delete together'}">${this.selectMode ? '✕ Cancel Select' : '☑ Select'}</button>`;
+    const selectBtn = `<button class="btn sm secondary" onclick="Questions.toggleSelectMode()" title="${this.selectMode ? 'Exit multi-select' : 'Select multiple questions to move or delete together'}">${this.selectMode ? '<svg class="ico" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg> Cancel Select' : '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 12.5 11.5 15 17 8.5"/><rect x="3.5" y="3.5" width="17" height="17" rx="3"/></svg> Select'}</button>`;
     const bulkBar = this.selectMode && this.selectedIds.size ? `<div class="card" style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
       <b>${this.selectedIds.size} selected</b>
       <div class="note-meta-row">
@@ -1585,7 +1642,7 @@ const Questions = {
             </summary>
             <div style="margin-top:8px;">
               <div class="note-meta-row"><span class="pill">${esc(q.type)}</span><span class="pill">${esc(q.difficulty)}</span><span class="subtle">${subjectName(q.subjectId)}</span></div>
-              <div class="subtle" style="margin-top:4px;">🃏 ${fc && fc.nextDate ? 'Next revision: ' + fmtDateShort(fc.nextDate) : 'Flashcard not yet reviewed'}</div>
+              <div class="subtle" style="margin-top:4px;"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="2"/><line x1="3" y1="10.5" x2="21" y2="10.5"/></svg> ${fc && fc.nextDate ? 'Next revision: ' + fmtDateShort(fc.nextDate) : 'Flashcard not yet reviewed'}</div>
               ${Questions.answerAreaHTML(q)}
               <div id="ans-${q.id}" style="display:none;margin-top:8px;padding:8px;background:var(--bg);border-radius:8px;">${esc(q.modelAnswer) || '<span class="subtle">No model answer recorded.</span>'}</div>
             </div>
@@ -1601,7 +1658,7 @@ const Questions = {
           <span class="pill ${q.status === 'not-attempted' ? '' : 'warn'}">${esc(q.status)}</span>
           <span class="subtle">${subjectName(q.subjectId)}</span>
         </div>
-        <div class="subtle" style="margin-top:4px;">🃏 ${fc && fc.nextDate ? 'Next revision: ' + fmtDateShort(fc.nextDate) : 'Flashcard not yet reviewed'}</div>
+        <div class="subtle" style="margin-top:4px;"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="2"/><line x1="3" y1="10.5" x2="21" y2="10.5"/></svg> ${fc && fc.nextDate ? 'Next revision: ' + fmtDateShort(fc.nextDate) : 'Flashcard not yet reviewed'}</div>
         ${Questions.answerAreaHTML(q)}
         <div id="ans-${q.id}" style="display:none;margin-top:8px;padding:8px;background:var(--bg);border-radius:8px;">${esc(q.modelAnswer) || '<span class="subtle">No model answer recorded.</span>'}</div>
       </div>`; }).join('')}
@@ -1643,20 +1700,20 @@ const Questions = {
     if (!sel) { toast('Pick an option first'); return; }
     const correct = parseInt(sel.value) === q.correctOptionIndex;
     Questions.setStatus(id, correct ? 'correct' : 'incorrect');
-    toast(correct ? '✅ Correct!' : `❌ Correct answer: ${q.options[q.correctOptionIndex]}`);
+    toast(correct ? '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><polyline points="7.5 12.5 10.5 15.5 16.5 8.5"/></svg> Correct!' : `<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><line x1="9" y1="9" x2="15" y2="15"/><line x1="15" y1="9" x2="9" y2="15"/></svg> Correct answer: ${q.options[q.correctOptionIndex]}`);
   },
   checkTF(id, ans) {
     const q = Cache.questions.find(x => x.id === id);
     const correct = ans === q.correctAnswerText;
     Questions.setStatus(id, correct ? 'correct' : 'incorrect');
-    toast(correct ? '✅ Correct!' : `❌ Correct answer: ${q.correctAnswerText}`);
+    toast(correct ? '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><polyline points="7.5 12.5 10.5 15.5 16.5 8.5"/></svg> Correct!' : `<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><line x1="9" y1="9" x2="15" y2="15"/><line x1="15" y1="9" x2="9" y2="15"/></svg> Correct answer: ${q.correctAnswerText}`);
   },
   checkFIB(id) {
     const q = Cache.questions.find(x => x.id === id);
     const val = (document.getElementById('fib-' + id).value || '').trim().toLowerCase();
     const correct = val === (q.correctAnswerText || '').trim().toLowerCase();
     Questions.setStatus(id, correct ? 'correct' : 'incorrect');
-    toast(correct ? '✅ Correct!' : `❌ Correct answer: ${q.correctAnswerText}`);
+    toast(correct ? '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><polyline points="7.5 12.5 10.5 15.5 16.5 8.5"/></svg> Correct!' : `<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><line x1="9" y1="9" x2="15" y2="15"/><line x1="15" y1="9" x2="9" y2="15"/></svg> Correct answer: ${q.correctAnswerText}`);
   },
   toggleAnswer(id) { const el = document.getElementById('ans-' + id); el.style.display = el.style.display === 'none' ? 'block' : 'none'; },
   toggleSelectMode() { this.selectMode = !this.selectMode; if (!this.selectMode) this.selectedIds.clear(); Router.render(); },
@@ -1700,11 +1757,11 @@ const Bookmarks = {
   async remove(id) { await DB.del('bookmarks', id); Cache.bookmarks = Cache.bookmarks.filter(b => b.id !== id); await recordTombstone('bookmarks', id); Router.render(); },
   render() {
     const items = Cache.bookmarks || [];
-    if (!items.length) return emptyState('🔖', 'Bookmark notes, PDF pages and questions to find them fast.', null, null);
+    if (!items.length) return emptyState('<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h12v18l-6-4.5L6 21z"/></svg>', 'Bookmark notes, PDF pages and questions to find them fast.', null, null);
     return `<h2>Bookmarks</h2>${items.map(b => `
       <div class="list-row" onclick="Bookmarks.open('${b.targetType}','${b.targetId}')" title="Open this bookmark">
-        <span>🔖</span><div style="flex:1;">${esc(b.label)}<div class="subtle">${b.targetType} · ${fmtDate(b.createdAt)}</div></div>
-        <button class="btn sm secondary" onclick="event.stopPropagation();Bookmarks.remove('${b.id}')" title="Remove this bookmark">✕</button>
+        <span><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h12v18l-6-4.5L6 21z"/></svg></span><div style="flex:1;">${esc(b.label)}<div class="subtle">${b.targetType} · ${fmtDate(b.createdAt)}</div></div>
+        <button class="btn sm secondary" onclick="event.stopPropagation();Bookmarks.remove('${b.id}')" title="Remove this bookmark"><svg class="ico" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
       </div>`).join('')}`;
   },
   open(type, id) {
@@ -1808,20 +1865,20 @@ const Pdfs = {
     const densityBtn = `<button class="btn sm secondary" onclick="Settings.set('listDensity','${compact ? 'comfortable' : 'compact'}').then(()=>Router.render())" title="${compact ? 'Switch to a roomier card grid' : 'Switch to a denser list that fits more PDFs on screen'}">${compact ? '▥ Comfortable' : '▤ Compact'}</button>`;
     return `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
       <h2 style="margin:0;">PDF Library${items.length ? ` (${items.length})` : ''}</h2>
-      <div class="note-meta-row">${densityBtn}${items.length >= 2 ? `<button class="btn sm secondary" onclick="Pdfs.promptMerge()" title="Combine two PDFs from your library into one new PDF">🔗 Merge PDFs</button>` : ''}<button class="btn" onclick="Pdfs.upload()" title="Choose a PDF file to upload">+ Import PDF</button></div></div>
+      <div class="note-meta-row">${densityBtn}${items.length >= 2 ? `<button class="btn sm secondary" onclick="Pdfs.promptMerge()" title="Combine two PDFs from your library into one new PDF"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.5 14.5 14.5 9.5"/><path d="M11 6.5 12.6 4.9a3.5 3.5 0 0 1 5 5L16 11.5"/><path d="M13 17.5 11.4 19.1a3.5 3.5 0 0 1-5-5L8 12.5"/></svg> Merge PDFs</button>` : ''}<button class="btn" onclick="Pdfs.upload()" title="Choose a PDF file to upload">+ Import PDF</button></div></div>
       ${items.length ? (compact
         ? shown.map(p => `<div class="list-row" onclick="UI.nav('pdf',{id:'${p.id}'})" title="Open this PDF">
-            <span>📄</span><div style="flex:1;">${esc(p.title)}</div>
+            <span><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5"/></svg></span><div style="flex:1;">${esc(p.title)}</div>
             <span class="subtle">${p.pageCount || '?'} pages</span>
             <button class="btn sm secondary" onclick="event.stopPropagation();Pdfs.remove('${p.id}')" title="Move this PDF to Trash">Delete</button>
           </div>`).join('')
         : `<div class="grid cols-3">${shown.map(p => `
       <div class="card" style="cursor:pointer;" onclick="UI.nav('pdf',{id:'${p.id}'})" title="Open this PDF">
-        <div style="font-size:32px;">📄</div><b>${esc(p.title)}</b>
+        <div style="font-size:32px;"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5"/></svg></div><b>${esc(p.title)}</b>
         <div class="subtle">${p.pageCount || '?'} pages</div>
         <div style="text-align:right;margin-top:8px;"><button class="btn sm secondary" onclick="event.stopPropagation();Pdfs.remove('${p.id}')" title="Move this PDF to Trash">Delete</button></div>
       </div>`).join('')}</div>`
-      ) + (remaining > 0 ? `<button class="btn sm secondary" style="margin-top:16px;" onclick="Pdfs.libraryVisibleCount+=50;Router.render();" title="Show more PDFs">Show ${Math.min(remaining, 50)} more (${remaining} remaining)</button>` : '') : emptyState('📄', 'No PDFs yet.', 'Import PDF', 'Pdfs.upload()')}`;
+      ) + (remaining > 0 ? `<button class="btn sm secondary" style="margin-top:16px;" onclick="Pdfs.libraryVisibleCount+=50;Router.render();" title="Show more PDFs">Show ${Math.min(remaining, 50)} more (${remaining} remaining)</button>` : '') : emptyState('<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5"/></svg>', 'No PDFs yet.', 'Import PDF', 'Pdfs.upload()')}`;
   },
   async renderViewer(id) {
     const rec = Cache.pdfs.find(p => p.id === id);
@@ -1857,26 +1914,26 @@ const Pdfs = {
         <button class="icon-btn" onclick="Pdfs.nextPage()" title="Next page">Next ›</button>
         <button class="icon-btn" onclick="Pdfs.zoom(-0.15)" title="Zoom out" aria-label="Zoom out">−</button>
         <button class="icon-btn" onclick="Pdfs.zoom(0.15)" title="Zoom in" aria-label="Zoom in">+</button>
-        <button class="icon-btn" onclick="Pdfs.toggleSearchBar()" title="Find text anywhere in this PDF">🔍 Find</button>
+        <button class="icon-btn" onclick="Pdfs.toggleSearchBar()" title="Find text anywhere in this PDF"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><line x1="20" y1="20" x2="15.3" y2="15.3"/></svg> Find</button>
         <button class="icon-btn" id="pdfReadModeBtn" onclick="Pdfs.toggleReadMode()" title="${pdfReadMode ? 'Exit whole-screen reading view and return to the full editor' : 'Switch to a distraction-free, whole-screen reading view with just the essentials'}">${pdfReadMode ? '⛶ Exit Full Screen' : '⛶ Full Screen'}</button>
-        <button class="icon-btn pdf-edit-only" id="pdfUndoBtn" onclick="Pdfs.undo()" title="Undo the last highlight, underline, sticky note or drawing" disabled>↶ Undo</button>
-        <button class="icon-btn pdf-edit-only" id="pdfRedoBtn" onclick="Pdfs.redo()" title="Redo" disabled>↷ Redo</button>
-        <button class="icon-btn pdf-edit-only" onclick="Pdfs.bookmarkPage('${id}')" title="Bookmark this page for quick return">🔖 Bookmark page</button>
-        <button class="icon-btn pdf-edit-only" onclick="Pdfs.promptExtractPages('${id}')" title="Split a page range out of this PDF into a new standalone PDF">✂ Extract Pages</button>
+        <button class="icon-btn pdf-edit-only" id="pdfUndoBtn" onclick="Pdfs.undo()" title="Undo the last highlight, underline, sticky note or drawing" disabled><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10h9a5.5 5.5 0 0 1 0 11h-2"/><polyline points="8 5 4 10 8 15"/></svg> Undo</button>
+        <button class="icon-btn pdf-edit-only" id="pdfRedoBtn" onclick="Pdfs.redo()" title="Redo" disabled><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 10h-9a5.5 5.5 0 0 0 0 11h2"/><polyline points="16 5 20 10 16 15"/></svg> Redo</button>
+        <button class="icon-btn pdf-edit-only" onclick="Pdfs.bookmarkPage('${id}')" title="Bookmark this page for quick return"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h12v18l-6-4.5L6 21z"/></svg> Bookmark page</button>
+        <button class="icon-btn pdf-edit-only" onclick="Pdfs.promptExtractPages('${id}')" title="Split a page range out of this PDF into a new standalone PDF"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="6" r="2.3"/><circle cx="6" cy="18" r="2.3"/><line x1="20" y1="4" x2="7.6" y2="14.5"/><line x1="20" y1="20" x2="7.6" y2="9.5"/></svg> Extract Pages</button>
         <button class="icon-btn" id="stickyBtn" onclick="Pdfs.toggleStickyMode()" title="Click a spot on the page to drop a sticky note there">📌 Sticky note</button>
-        <button class="icon-btn pdf-edit-only" id="drawBtn" onclick="Pdfs.toggleDrawMode()" title="Draw freehand ink, an arrow, or a rectangle on this page">✏ Draw</button>
-        <button class="icon-btn pdf-edit-only" id="splitBtn" onclick="Pdfs.toggleSplit()" title="Dock a note editor beside the PDF, for taking notes while you read">📝 Split with Notes</button>
-        <button class="icon-btn pdf-edit-only" onclick="Pdfs.exportAnnotatedPdf()" title="Download a copy of this PDF with all highlights, underlines and drawings permanently burned in — the original stays untouched">⬇ Export PDF</button>
+        <button class="icon-btn pdf-edit-only" id="drawBtn" onclick="Pdfs.toggleDrawMode()" title="Draw freehand ink, an arrow, or a rectangle on this page"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 5.5 18.5 9.5"/><path d="M4 20l.8-4L16 4.8a1.6 1.6 0 0 1 2.3 0l.9.9a1.6 1.6 0 0 1 0 2.3L8 19.2z"/></svg> Draw</button>
+        <button class="icon-btn pdf-edit-only" id="splitBtn" onclick="Pdfs.toggleSplit()" title="Dock a note editor beside the PDF, for taking notes while you read"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="16.5" x2="15" y2="16.5"/></svg> Split with Notes</button>
+        <button class="icon-btn pdf-edit-only" onclick="Pdfs.exportAnnotatedPdf()" title="Download a copy of this PDF with all highlights, underlines and drawings permanently burned in — the original stays untouched"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><polyline points="7.5 11 12 15.5 16.5 11"/><path d="M5 18.5h14"/></svg> Export PDF</button>
         <span class="subtle" style="font-size:11.5px;">Select text to highlight/underline</span>
       </div>
       <div class="pdf-draw-toolbar" id="pdfDrawToolbar" style="display:none;">
-        <button data-tool="pen" class="active-tool" onclick="Pdfs.setDrawTool('pen')" title="Freehand pen">✏ Pen</button>
+        <button data-tool="pen" class="active-tool" onclick="Pdfs.setDrawTool('pen')" title="Freehand pen"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 5.5 18.5 9.5"/><path d="M4 20l.8-4L16 4.8a1.6 1.6 0 0 1 2.3 0l.9.9a1.6 1.6 0 0 1 0 2.3L8 19.2z"/></svg> Pen</button>
         <button data-tool="arrow" onclick="Pdfs.setDrawTool('arrow')" title="Drag to draw an arrow">↗ Arrow</button>
         <button data-tool="rect" onclick="Pdfs.setDrawTool('rect')" title="Drag to draw a rectangle">▭ Rect</button>
         <div class="sep"></div>
         ${drawColors.map((c, i) => `<span class="draw-color-dot ${i === 0 ? 'selected' : ''}" data-color="${c}" style="background:${c};" onclick="Pdfs.setDrawColor('${c}')" title="Use this color"></span>`).join('')}
         <div class="sep"></div>
-        <button onclick="Pdfs.clearPageDrawings()" title="Remove all drawings on this page">🗑 Clear page</button>
+        <button onclick="Pdfs.clearPageDrawings()" title="Remove all drawings on this page"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="7" x2="20" y2="7"/><path d="M6 7v13a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V7"/><path d="M9 7V4.5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1V7"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg> Clear page</button>
         <button class="btn sm" onclick="Pdfs.toggleDrawMode()" title="Exit drawing mode">Done</button>
       </div>
       <div class="pdf-search-bar" id="pdfSearchBar" style="display:none;">
@@ -1885,7 +1942,7 @@ const Pdfs = {
         <button class="icon-btn" onclick="Pdfs.searchPrev()" title="Previous matching page">‹</button>
         <button class="icon-btn" onclick="Pdfs.searchNext()" title="Next matching page">›</button>
         <span id="pdfSearchStatus" class="subtle"></span>
-        <button class="icon-btn" onclick="Pdfs.toggleSearchBar()" title="Close search" aria-label="Close search">✕</button>
+        <button class="icon-btn" onclick="Pdfs.toggleSearchBar()" title="Close search" aria-label="Close search"><svg class="ico" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
       </div>
       <div class="pdf-body-row">
         <div class="pdf-canvas-wrap" id="pdfCanvasWrap">
@@ -2042,7 +2099,7 @@ const Pdfs = {
     bar.style.left = (rect.left + window.scrollX) + 'px';
     bar.innerHTML = colors.map((c, i) => `<button title="${esc(c.label)}" onmousedown="event.preventDefault();Pdfs.saveHighlight('${c.color}','${c.key}')">${['🟡', '🟢', '🔵', '🔴', '🟣', '🟠'][i] || '●'}</button>`).join('')
       + `<button title="Underline" onmousedown="event.preventDefault();Pdfs.saveHighlight('','underline')">U̲</button>`
-      + `<button title="Add a comment/annotation to this selection" onmousedown="event.preventDefault();Pdfs.annotateSelection()">💬</button>`;
+      + `<button title="Add a comment/annotation to this selection" onmousedown="event.preventDefault();Pdfs.annotateSelection()"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5.5h16v11H9l-4 3.5v-3.5H4z"/></svg></button>`;
     document.body.appendChild(bar);
   },
   renderSelectionPreview(range) {
@@ -2270,7 +2327,7 @@ const Pdfs = {
     }
   },
   async _removeAnnotationRecord(id) {
-    // Core delete, shared by every PDF-annotation delete path (inline ✕,
+    // Core delete, shared by every PDF-annotation delete path (inline <svg class="ico" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>,
     // modal Delete, single-drawing delete, and the bulk Clear Page loop) —
     // one place that removes the record, updates the cache, records a
     // tombstone (so sync can never resurrect it), and pushes an undo
@@ -2587,7 +2644,7 @@ const Pdfs = {
         const icon = document.createElement('div');
         icon.className = 'pdf-sticky-icon';
         icon.style.left = (a.x * pdfScale) + 'px'; icon.style.top = (a.y * pdfScale) + 'px';
-        icon.textContent = '📝'; icon.title = a.comment;
+        icon.innerHTML = '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="16.5" x2="15" y2="16.5"/></svg>'; icon.title = a.comment;
         icon.onclick = (ev) => { ev.stopPropagation(); Pdfs.openSticky(a.id); };
         overlay.appendChild(icon);
       } else {
@@ -2621,12 +2678,12 @@ const Pdfs = {
       <h4 style="font-size:12px;text-transform:uppercase;color:var(--text-dim);">This page</h4>
       ${pageAnnots.length ? pageAnnots.map(a => {
       const isDrawing = ['ink', 'arrow', 'rect'].includes(a.kind);
-      const icon = a.kind === 'sticky' ? '📝' : a.kind === 'underline' ? '‾' : a.kind === 'ink' ? '✏' : a.kind === 'arrow' ? '↗' : a.kind === 'rect' ? '▭' : '🖍';
+      const icon = a.kind === 'sticky' ? '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="16.5" x2="15" y2="16.5"/></svg>' : a.kind === 'underline' ? '‾' : a.kind === 'ink' ? '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 5.5 18.5 9.5"/><path d="M4 20l.8-4L16 4.8a1.6 1.6 0 0 1 2.3 0l.9.9a1.6 1.6 0 0 1 0 2.3L8 19.2z"/></svg>' : a.kind === 'arrow' ? '↗' : a.kind === 'rect' ? '▭' : '🖍';
       const label = isDrawing ? (a.kind.charAt(0).toUpperCase() + a.kind.slice(1) + ' drawing') : (a.comment || a.text || '');
       const openHandler = a.kind === 'sticky' ? `Pdfs.openSticky('${a.id}')` : isDrawing ? '' : `Pdfs.openHighlight('${a.id}')`;
       return `<div style="display:flex;align-items:center;gap:4px;">
         <span class="subtle" style="flex:1;padding:4px 0;${openHandler ? 'cursor:pointer;' : ''}" ${openHandler ? `onclick="${openHandler}" title="Click to view, edit, or delete"` : ''}>${icon} ${esc(label.slice(0, 42))}</span>
-        <span class="del-mini" onclick="Pdfs.quickDeleteAnnotation('${a.id}')" title="Delete this ${isDrawing ? 'drawing' : a.kind === 'sticky' ? 'sticky note' : a.kind}">✕</span>
+        <span class="del-mini" onclick="Pdfs.quickDeleteAnnotation('${a.id}')" title="Delete this ${isDrawing ? 'drawing' : a.kind === 'sticky' ? 'sticky note' : a.kind}"><svg class="ico" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></span>
       </div>`;
     }).join('') : '<div class="subtle">None on this page yet.</div>'}
       <h4 style="font-size:12px;text-transform:uppercase;color:var(--text-dim);margin-top:14px;">Bookmarked pages</h4>
@@ -2697,31 +2754,31 @@ const Pdfs = {
 /* Static command list for the palette — actions, not content. Dynamic
    "Go to subject" commands are appended at search time from Cache.subjects. */
 const Commands = [
-  { label: 'Quick Capture (jot it down)', icon: '📥', kind: 'Create', run: () => { CmdK.close(); QuickCapture.open(); } },
-  { label: 'Open Inbox', icon: '📥', kind: 'Go to', run: () => { CmdK.close(); UI.nav('inbox'); } },
-  { label: 'New Note', icon: '📝', kind: 'Create', run: () => { CmdK.close(); Notes.promptNew(); } },
-  { label: 'New Course', icon: '📚', kind: 'Create', run: () => { CmdK.close(); Courses.promptNew(); } },
-  { label: 'Import PDF', icon: '📄', kind: 'Create', run: () => { CmdK.close(); Pdfs.upload(); } },
-  { label: 'Add Mnemonic', icon: '🧠', kind: 'Create', run: () => { CmdK.close(); Mnemonics.promptNew(); } },
-  { label: 'Add Jargon', icon: '🔤', kind: 'Create', run: () => { CmdK.close(); Jargons.promptNew(); } },
-  { label: 'Add Question', icon: '❓', kind: 'Create', run: () => { CmdK.close(); Questions.promptNew(); } },
-  { label: 'Start Revision', icon: '🔁', kind: 'Go to', run: () => { CmdK.close(); UI.nav('revision'); } },
-  { label: 'Exam Mode', icon: '🎓', kind: 'Go to', run: () => { CmdK.close(); UI.nav('exam'); } },
-  { label: 'Last-Minute Revision', icon: '⚡', kind: 'Go to', run: () => { CmdK.close(); UI.nav('lmr'); } },
+  { label: 'Quick Capture (jot it down)', icon: '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12h4l2 3h4l2-3h4"/><path d="M4 12 5.5 5a1 1 0 0 1 1-.8h11a1 1 0 0 1 1 .8L20 12v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/></svg>', kind: 'Create', run: () => { CmdK.close(); QuickCapture.open(); } },
+  { label: 'Open Inbox', icon: '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12h4l2 3h4l2-3h4"/><path d="M4 12 5.5 5a1 1 0 0 1 1-.8h11a1 1 0 0 1 1 .8L20 12v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/></svg>', kind: 'Go to', run: () => { CmdK.close(); UI.nav('inbox'); } },
+  { label: 'New Note', icon: '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="16.5" x2="15" y2="16.5"/></svg>', kind: 'Create', run: () => { CmdK.close(); Notes.promptNew(); } },
+  { label: 'New Course', icon: '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4 3 9l9 5 9-5z"/><path d="M3 14l9 5 9-5"/></svg>', kind: 'Create', run: () => { CmdK.close(); Courses.promptNew(); } },
+  { label: 'Import PDF', icon: '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5"/></svg>', kind: 'Create', run: () => { CmdK.close(); Pdfs.upload(); } },
+  { label: 'Add Mnemonic', icon: '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4.5a2.5 2.5 0 0 0-2.4 3.3A2.6 2.6 0 0 0 5 10.3v.2A2.6 2.6 0 0 0 4 12.5 2.6 2.6 0 0 0 5.3 14.7 2.5 2.5 0 0 0 7.5 18.5a2.4 2.4 0 0 0 1-.2A2.5 2.5 0 0 0 11 20a2.5 2.5 0 0 0 2.5-2.5v-10A2.5 2.5 0 0 0 11 5a2.4 2.4 0 0 0-2-.5z"/><path d="M15 4.5a2.5 2.5 0 0 1 2.4 3.3A2.6 2.6 0 0 1 19 10.3v.2a2.6 2.6 0 0 1 1 2 2.6 2.6 0 0 1-1.3 2.2 2.5 2.5 0 0 1-2.2 3.8 2.4 2.4 0 0 1-1-.2A2.5 2.5 0 0 1 13 17.5v-10A2.5 2.5 0 0 1 15.5 5a2.4 2.4 0 0 1-.5-.5z"/></svg>', kind: 'Create', run: () => { CmdK.close(); Mnemonics.promptNew(); } },
+  { label: 'Add Jargon', icon: '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5V6a2 2 0 0 1 2-2h13v15H6a2 2 0 0 0 0 4h13"/><line x1="9" y1="8" x2="15" y2="8"/></svg>', kind: 'Create', run: () => { CmdK.close(); Jargons.promptNew(); } },
+  { label: 'Add Question', icon: '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.2a2.5 2.5 0 1 1 3.7 2.3c-.9.5-1.2 1-1.2 2"/><line x1="12" y1="17" x2="12" y2="17.1"/></svg>', kind: 'Create', run: () => { CmdK.close(); Questions.promptNew(); } },
+  { label: 'Start Revision', icon: '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10a8 8 0 0 1 14-4.9M20 5v5h-5"/><path d="M20 14a8 8 0 0 1-14 4.9M4 19v-5h5"/></svg>', kind: 'Go to', run: () => { CmdK.close(); UI.nav('revision'); } },
+  { label: 'Exam Mode', icon: '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 9.5 12 5l10 4.5-10 4.5z"/><path d="M6 12v5c0 1 2.7 2.5 6 2.5s6-1.5 6-2.5v-5"/><path d="M22 9.5v5.5"/></svg>', kind: 'Go to', run: () => { CmdK.close(); UI.nav('exam'); } },
+  { label: 'Last-Minute Revision', icon: '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="13 2 4 14 11 14 10 22 20 10 13 10"/></svg>', kind: 'Go to', run: () => { CmdK.close(); UI.nav('lmr'); } },
   { label: 'Focus Mode / Study Timer', icon: '⏱', kind: 'Go to', run: () => { CmdK.close(); UI.nav('focus'); } },
-  { label: 'Open Dashboard', icon: '🏠', kind: 'Go to', run: () => { CmdK.close(); UI.nav('dashboard'); } },
-  { label: 'Open Search & Filters', icon: '🔍', kind: 'Go to', run: () => { CmdK.close(); UI.nav('search'); } },
-  { label: 'Open Analytics', icon: '📊', kind: 'Go to', run: () => { CmdK.close(); UI.nav('analytics'); } },
-  { label: 'Open Subjects', icon: '📚', kind: 'Go to', run: () => { CmdK.close(); UI.nav('subjects'); } },
-  { label: 'Open PDF Library', icon: '📄', kind: 'Go to', run: () => { CmdK.close(); UI.nav('pdfs'); } },
-  { label: 'Open Questions', icon: '❓', kind: 'Go to', run: () => { CmdK.close(); UI.nav('questions'); } },
-  { label: 'Open Mnemonics', icon: '🧠', kind: 'Go to', run: () => { CmdK.close(); UI.nav('mnemonics'); } },
-  { label: 'Open Jargons', icon: '🔤', kind: 'Go to', run: () => { CmdK.close(); UI.nav('jargons'); } },
-  { label: 'Open Bookmarks', icon: '🔖', kind: 'Go to', run: () => { CmdK.close(); UI.nav('bookmarks'); } },
-  { label: 'Open Trash', icon: '🗑', kind: 'Go to', run: () => { CmdK.close(); UI.nav('trash'); } },
-  { label: 'Open Settings', icon: '⚙️', kind: 'Go to', run: () => { CmdK.close(); UI.nav('settings'); } },
-  { label: 'Export Backup', icon: '⬇', kind: 'Action', run: () => { CmdK.close(); UI.nav('settings'); setTimeout(() => BackupService.exportJSON(), 250); } },
-  { label: 'Toggle Dark Mode', icon: '🌓', kind: 'Action', run: () => { CmdK.close(); Theme.toggle(); } },
+  { label: 'Open Dashboard', icon: '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11.5 12 4l8 7.5"/><path d="M6 10v9a1 1 0 0 0 1 1h3v-6h4v6h3a1 1 0 0 0 1-1v-9"/></svg>', kind: 'Go to', run: () => { CmdK.close(); UI.nav('dashboard'); } },
+  { label: 'Open Search & Filters', icon: '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><line x1="20" y1="20" x2="15.3" y2="15.3"/></svg>', kind: 'Go to', run: () => { CmdK.close(); UI.nav('search'); } },
+  { label: 'Open Analytics', icon: '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="5" y1="20" x2="5" y2="12"/><line x1="12" y1="20" x2="12" y2="7"/><line x1="19" y1="20" x2="19" y2="15"/><line x1="3" y1="20" x2="21" y2="20"/></svg>', kind: 'Go to', run: () => { CmdK.close(); UI.nav('analytics'); } },
+  { label: 'Open Subjects', icon: '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4 3 9l9 5 9-5z"/><path d="M3 14l9 5 9-5"/></svg>', kind: 'Go to', run: () => { CmdK.close(); UI.nav('subjects'); } },
+  { label: 'Open PDF Library', icon: '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5"/></svg>', kind: 'Go to', run: () => { CmdK.close(); UI.nav('pdfs'); } },
+  { label: 'Open Questions', icon: '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.2a2.5 2.5 0 1 1 3.7 2.3c-.9.5-1.2 1-1.2 2"/><line x1="12" y1="17" x2="12" y2="17.1"/></svg>', kind: 'Go to', run: () => { CmdK.close(); UI.nav('questions'); } },
+  { label: 'Open Mnemonics', icon: '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4.5a2.5 2.5 0 0 0-2.4 3.3A2.6 2.6 0 0 0 5 10.3v.2A2.6 2.6 0 0 0 4 12.5 2.6 2.6 0 0 0 5.3 14.7 2.5 2.5 0 0 0 7.5 18.5a2.4 2.4 0 0 0 1-.2A2.5 2.5 0 0 0 11 20a2.5 2.5 0 0 0 2.5-2.5v-10A2.5 2.5 0 0 0 11 5a2.4 2.4 0 0 0-2-.5z"/><path d="M15 4.5a2.5 2.5 0 0 1 2.4 3.3A2.6 2.6 0 0 1 19 10.3v.2a2.6 2.6 0 0 1 1 2 2.6 2.6 0 0 1-1.3 2.2 2.5 2.5 0 0 1-2.2 3.8 2.4 2.4 0 0 1-1-.2A2.5 2.5 0 0 1 13 17.5v-10A2.5 2.5 0 0 1 15.5 5a2.4 2.4 0 0 1-.5-.5z"/></svg>', kind: 'Go to', run: () => { CmdK.close(); UI.nav('mnemonics'); } },
+  { label: 'Open Jargons', icon: '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5V6a2 2 0 0 1 2-2h13v15H6a2 2 0 0 0 0 4h13"/><line x1="9" y1="8" x2="15" y2="8"/></svg>', kind: 'Go to', run: () => { CmdK.close(); UI.nav('jargons'); } },
+  { label: 'Open Bookmarks', icon: '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h12v18l-6-4.5L6 21z"/></svg>', kind: 'Go to', run: () => { CmdK.close(); UI.nav('bookmarks'); } },
+  { label: 'Open Trash', icon: '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="7" x2="20" y2="7"/><path d="M6 7v13a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V7"/><path d="M9 7V4.5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1V7"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>', kind: 'Go to', run: () => { CmdK.close(); UI.nav('trash'); } },
+  { label: 'Open Settings', icon: '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 13.5a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.9 2.9l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.9-2.9l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1h-.2a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.6-1.1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.9-2.9l.1.1a1.7 1.7 0 0 0 1.9.3h.1a1.7 1.7 0 0 0 1-1.6v-.2a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.9 2.9l-.1.1a1.7 1.7 0 0 0-.3 1.9v.1a1.7 1.7 0 0 0 1.6 1h.2a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.6 1z"/></svg>', kind: 'Go to', run: () => { CmdK.close(); UI.nav('settings'); } },
+  { label: 'Export Backup', icon: '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><polyline points="7.5 11 12 15.5 16.5 11"/><path d="M5 18.5h14"/></svg>', kind: 'Action', run: () => { CmdK.close(); UI.nav('settings'); setTimeout(() => BackupService.exportJSON(), 250); } },
+  { label: 'Toggle Dark Mode', icon: '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5z"/></svg>', kind: 'Action', run: () => { CmdK.close(); Theme.toggle(); } },
 ];
 
 const CmdK = {
@@ -2763,7 +2820,7 @@ const CmdK = {
     this._results = results;
     const el = document.getElementById('cmdkResults'); if (!el) return;
     const more = query && Search.run(query).length > 20
-      ? `<div class="cmdk-item" onclick="CmdK.close();UI.nav('search',{q:'${esc(query).replace(/'/g, "\\'")}'});" title="See every match with filters and sorting"><span>🔎 Open full Search page for "${esc(query)}"</span><small>Filters & sort</small></div>` : '';
+      ? `<div class="cmdk-item" onclick="CmdK.close();UI.nav('search',{q:'${esc(query).replace(/'/g, "\\'")}'});" title="See every match with filters and sorting"><span><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><line x1="20" y1="20" x2="15.3" y2="15.3"/></svg> Open full Search page for "${esc(query)}"</span><small>Filters & sort</small></div>` : '';
     el.innerHTML = (results.length ? results.map((r, i) => r.isCommand
       ? `<div class="cmdk-item" onclick="CmdK.runCommand(${i})" title="Run this command"><span>${r.icon} ${esc(r.label)}</span><small>${esc(r.kind)}</small></div>`
       : `<div class="cmdk-item" onclick="CmdK.go('${r.route}','${r.id}')" title="Open this result"><span>${r.icon} ${esc(r.title)}</span><small>${r.type}</small></div>`
@@ -2784,7 +2841,7 @@ const QuickCapture = {
     backdrop.className = 'cmdk-backdrop'; backdrop.id = 'qcBackdrop';
     backdrop.onclick = (e) => { if (e.target === backdrop) QuickCapture.close(); };
     backdrop.innerHTML = `<div class="cmdk" style="padding:16px;">
-      <div style="font-weight:600;margin-bottom:8px;">📥 Jot it down</div>
+      <div style="font-weight:600;margin-bottom:8px;"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12h4l2 3h4l2-3h4"/><path d="M4 12 5.5 5a1 1 0 0 1 1-.8h11a1 1 0 0 1 1 .8L20 12v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/></svg> Jot it down</div>
       <textarea id="qcInput" rows="3" placeholder="A stray thought, a fact to look up later, anything…" style="width:100%;border:1px solid var(--border);border-radius:8px;padding:10px;background:var(--bg);color:var(--text);font-family:inherit;font-size:14px;resize:vertical;" onkeydown="if(event.key==='Enter'&&(event.metaKey||event.ctrlKey)){event.preventDefault();QuickCapture.save();}"></textarea>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;">
         <span class="subtle" style="font-size:12px;">Saved to your Inbox — file it into a topic anytime. Esc to cancel, ⌘/Ctrl+Enter to save.</span>
@@ -2816,7 +2873,7 @@ function updateInboxBadge() {
 const InboxView = {
   render() {
     const items = [...(Cache.quickCaptures || [])].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-    if (!items.length) return emptyState('📥', 'Inbox is empty — jot down a stray thought anytime with the Quick Capture shortcut, and file it into a topic when you\'re ready.', null, null);
+    if (!items.length) return emptyState('<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12h4l2 3h4l2-3h4"/><path d="M4 12 5.5 5a1 1 0 0 1 1-.8h11a1 1 0 0 1 1 .8L20 12v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/></svg>', 'Inbox is empty — jot down a stray thought anytime with the Quick Capture shortcut, and file it into a topic when you\'re ready.', null, null);
     return `<h2>Inbox (${items.length})</h2>
     <p class="subtle">Quick-captured thoughts, not yet filed anywhere.</p>
     ${items.map(c => `<div class="card" style="margin-bottom:10px;">
@@ -2875,11 +2932,11 @@ const Search = {
   run(q) {
     q = (q || '').toLowerCase().trim();
     const out = [];
-    (Cache.notes || []).forEach(n => { if (!q || (n.title + n.content).toLowerCase().includes(q)) out.push({ icon: '📝', title: n.title, type: 'Note', route: 'note', id: n.id }); });
-    (Cache.pdfs || []).forEach(p => { if (!q || p.title.toLowerCase().includes(q)) out.push({ icon: '📄', title: p.title, type: 'PDF', route: 'pdf', id: p.id }); });
-    (Cache.mnemonics || []).forEach(m => { if (!q || (m.title + m.mnemonicText + m.meaning).toLowerCase().includes(q)) out.push({ icon: '🧠', title: m.title, type: 'Mnemonic', route: 'mnemonics', id: m.id }); });
-    (Cache.jargons || []).forEach(j => { if (!q || (j.term + j.meaning).toLowerCase().includes(q)) out.push({ icon: '🔤', title: j.term, type: 'Jargon', route: 'jargons', id: j.id }); });
-    (Cache.questions || []).forEach(qq => { if (!q || qq.questionText.toLowerCase().includes(q)) out.push({ icon: '❓', title: qq.questionText.slice(0, 60), type: 'Question', route: 'questions', id: qq.id }); });
+    (Cache.notes || []).forEach(n => { if (!q || (n.title + n.content).toLowerCase().includes(q)) out.push({ icon: '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="16.5" x2="15" y2="16.5"/></svg>', title: n.title, type: 'Note', route: 'note', id: n.id }); });
+    (Cache.pdfs || []).forEach(p => { if (!q || p.title.toLowerCase().includes(q)) out.push({ icon: '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5"/></svg>', title: p.title, type: 'PDF', route: 'pdf', id: p.id }); });
+    (Cache.mnemonics || []).forEach(m => { if (!q || (m.title + m.mnemonicText + m.meaning).toLowerCase().includes(q)) out.push({ icon: '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4.5a2.5 2.5 0 0 0-2.4 3.3A2.6 2.6 0 0 0 5 10.3v.2A2.6 2.6 0 0 0 4 12.5 2.6 2.6 0 0 0 5.3 14.7 2.5 2.5 0 0 0 7.5 18.5a2.4 2.4 0 0 0 1-.2A2.5 2.5 0 0 0 11 20a2.5 2.5 0 0 0 2.5-2.5v-10A2.5 2.5 0 0 0 11 5a2.4 2.4 0 0 0-2-.5z"/><path d="M15 4.5a2.5 2.5 0 0 1 2.4 3.3A2.6 2.6 0 0 1 19 10.3v.2a2.6 2.6 0 0 1 1 2 2.6 2.6 0 0 1-1.3 2.2 2.5 2.5 0 0 1-2.2 3.8 2.4 2.4 0 0 1-1-.2A2.5 2.5 0 0 1 13 17.5v-10A2.5 2.5 0 0 1 15.5 5a2.4 2.4 0 0 1-.5-.5z"/></svg>', title: m.title, type: 'Mnemonic', route: 'mnemonics', id: m.id }); });
+    (Cache.jargons || []).forEach(j => { if (!q || (j.term + j.meaning).toLowerCase().includes(q)) out.push({ icon: '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5V6a2 2 0 0 1 2-2h13v15H6a2 2 0 0 0 0 4h13"/><line x1="9" y1="8" x2="15" y2="8"/></svg>', title: j.term, type: 'Jargon', route: 'jargons', id: j.id }); });
+    (Cache.questions || []).forEach(qq => { if (!q || qq.questionText.toLowerCase().includes(q)) out.push({ icon: '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.2a2.5 2.5 0 1 1 3.7 2.3c-.9.5-1.2 1-1.2 2"/><line x1="12" y1="17" x2="12" y2="17.1"/></svg>', title: qq.questionText.slice(0, 60), type: 'Question', route: 'questions', id: qq.id }); });
     return out;
   }
 };
@@ -2947,9 +3004,9 @@ const RevisionView = {
   render() {
     const due = Revision.dueItems();
     const kindLabel = (d) => d.type === 'note' ? 'Note' : d.obj.sourceType === 'question' ? 'Question' : 'Mnemonic';
-    const kindIcon = (d) => d.type === 'note' ? '📝' : d.obj.sourceType === 'question' ? '❓' : '🧠';
+    const kindIcon = (d) => d.type === 'note' ? '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="16.5" x2="15" y2="16.5"/></svg>' : d.obj.sourceType === 'question' ? '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.2a2.5 2.5 0 1 1 3.7 2.3c-.9.5-1.2 1-1.2 2"/><line x1="12" y1="17" x2="12" y2="17.1"/></svg>' : '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4.5a2.5 2.5 0 0 0-2.4 3.3A2.6 2.6 0 0 0 5 10.3v.2A2.6 2.6 0 0 0 4 12.5 2.6 2.6 0 0 0 5.3 14.7 2.5 2.5 0 0 0 7.5 18.5a2.4 2.4 0 0 0 1-.2A2.5 2.5 0 0 0 11 20a2.5 2.5 0 0 0 2.5-2.5v-10A2.5 2.5 0 0 0 11 5a2.4 2.4 0 0 0-2-.5z"/><path d="M15 4.5a2.5 2.5 0 0 1 2.4 3.3A2.6 2.6 0 0 1 19 10.3v.2a2.6 2.6 0 0 1 1 2 2.6 2.6 0 0 1-1.3 2.2 2.5 2.5 0 0 1-2.2 3.8 2.4 2.4 0 0 1-1-.2A2.5 2.5 0 0 1 13 17.5v-10A2.5 2.5 0 0 1 15.5 5a2.4 2.4 0 0 1-.5-.5z"/></svg>';
     if (this.mode === 'list' || !due.length) {
-      if (!due.length) return emptyState('🎉', 'Nothing due for revision right now.', null, null);
+      if (!due.length) return emptyState('<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20 15 9"/><path d="M13 4.5 15.5 7"/><path d="M17.5 3 19 4.5"/><path d="M17 8 19.5 10.5"/><path d="M4 20l3.5-1L6 15.5z"/><circle cx="9.5" cy="6.5" r="1"/><circle cx="19.5" cy="14.5" r="1"/></svg>', 'Nothing due for revision right now.', null, null);
       return `<h2>Revision due today (${due.length})</h2>
       <p class="subtle" style="margin-top:-6px;">Mixed across subjects rather than one at a time — interleaved practice sticks better.</p>
       <button class="btn" style="margin-bottom:14px;" onclick="RevisionView.mode='cards';RevisionView.cardIndex=0;Router.render();" title="Begin reviewing everything due today, one card at a time">▶ Start Revision Session</button>
@@ -2958,7 +3015,7 @@ const RevisionView = {
         <span class="pill">${kindLabel(d)}</span></div>`).join('')}`;
     }
     // card mode
-    if (this.cardIndex >= due.length) { this.mode = 'list'; toast('Revision session complete 🎉'); return this.render(); }
+    if (this.cardIndex >= due.length) { this.mode = 'list'; toast('Revision session complete <svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20 15 9"/><path d="M13 4.5 15.5 7"/><path d="M17.5 3 19 4.5"/><path d="M17 8 19.5 10.5"/><path d="M4 20l3.5-1L6 15.5z"/><circle cx="9.5" cy="6.5" r="1"/><circle cx="19.5" cy="14.5" r="1"/></svg>'); return this.render(); }
     const d = due[this.cardIndex];
     const front = d.type === 'note' ? d.obj.title : d.obj.front;
     const back = d.type === 'note' ? '(open the note to review in full)' : d.obj.back;
@@ -3076,7 +3133,7 @@ const ExamMode = {
         <div class="card" style="max-width:640px;">
           <b>${esc(q.questionText)}</b>
           <hr class="sep">
-          <div class="pill ${this.autoVerdict === 'correct' ? '' : 'warn'}">${this.autoVerdict === 'correct' ? '✅ Correct' : '❌ Incorrect'}</div>
+          <div class="pill ${this.autoVerdict === 'correct' ? '' : 'warn'}">${this.autoVerdict === 'correct' ? '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><polyline points="7.5 12.5 10.5 15.5 16.5 8.5"/></svg> Correct' : '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><line x1="9" y1="9" x2="15" y2="15"/><line x1="15" y1="9" x2="9" y2="15"/></svg> Incorrect'}</div>
           <div class="subtle" style="margin-top:8px;">Your answer: ${esc(this.answer) || '(none)'}<br>Correct answer: ${esc(correctText || '')}</div>
           <button class="btn" style="margin-top:14px;" onclick="ExamMode.grade('${this.autoVerdict}')" title="Move to the next question">Continue</button>
         </div>`;
@@ -3140,7 +3197,7 @@ const ExamMode = {
         <div class="card"><div class="subtle">Correct</div><h2 style="margin:6px 0;">${correct}</h2></div>
         <div class="card"><div class="subtle">Needs work</div><h2 style="margin:6px 0;">${needsWork}</h2></div>
       </div>
-      ${this.results.map(r => `<div class="list-row"><span>${r.verdict === 'correct' ? '✅' : r.verdict === 'partial' ? '🟡' : '🔴'}</span><div style="flex:1;">${esc(r.questionText)}</div><span class="pill">${r.marks} marks</span></div>`).join('')}
+      ${this.results.map(r => `<div class="list-row"><span>${r.verdict === 'correct' ? '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><polyline points="7.5 12.5 10.5 15.5 16.5 8.5"/></svg>' : r.verdict === 'partial' ? '🟡' : '🔴'}</span><div style="flex:1;">${esc(r.questionText)}</div><span class="pill">${r.marks} marks</span></div>`).join('')}
       <button class="btn" style="margin-top:16px;" onclick="ExamMode.reset()" title="Return to the exam setup screen">Start another exam</button>`;
   },
   reset() { this.state = 'setup'; this.queue = []; this.index = 0; this.results = []; Router.render(); }
@@ -3154,25 +3211,25 @@ const LMR = {
     (Cache.notes || []).forEach(n => {
       if (subjectId && n.subjectId !== subjectId) return;
       if (n.importance >= 4 || n.examFrequency === 'high' || n.status === 'difficult') {
-        items.push({ type: 'Note', icon: '📝', title: n.title, body: stripHtml(n.content).slice(0, 500), tag: n.examFrequency === 'high' ? 'Exam Important' : (n.status === 'difficult' ? 'Difficult' : `★${n.importance}`), _subj: n.subjectId });
+        items.push({ type: 'Note', icon: '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="16.5" x2="15" y2="16.5"/></svg>', title: n.title, body: stripHtml(n.content).slice(0, 500), tag: n.examFrequency === 'high' ? 'Exam Important' : (n.status === 'difficult' ? 'Difficult' : `★${n.importance}`), _subj: n.subjectId });
       }
     });
     (Cache.jargons || []).forEach(j => {
       if (subjectId && j.subjectId !== subjectId) return;
       if (j.importance && j.importance !== 'Normal') {
-        items.push({ type: 'Jargon', icon: '🔤', title: j.term, body: j.meaning + (j.memoryTrick ? `\n💡 ${j.memoryTrick}` : ''), tag: j.importance, _subj: j.subjectId });
+        items.push({ type: 'Jargon', icon: '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5V6a2 2 0 0 1 2-2h13v15H6a2 2 0 0 0 0 4h13"/><line x1="9" y1="8" x2="15" y2="8"/></svg>', title: j.term, body: j.meaning + (j.memoryTrick ? `\n<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6"/><path d="M10 21h4"/><path d="M12 3a6.5 6.5 0 0 0-3.8 11.8c.5.4.8 1 .8 1.7v.5h6v-.5c0-.7.3-1.3.8-1.7A6.5 6.5 0 0 0 12 3z"/></svg> ${j.memoryTrick}` : ''), tag: j.importance, _subj: j.subjectId });
       }
     });
     (Cache.questions || []).forEach(q => {
       if (subjectId && q.subjectId !== subjectId) return;
       if (q.difficulty === 'Hard') {
-        items.push({ type: 'Question', icon: '❓', title: q.questionText, body: q.modelAnswer || '(No model answer recorded)', tag: 'Hard', _subj: q.subjectId });
+        items.push({ type: 'Question', icon: '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.2a2.5 2.5 0 1 1 3.7 2.3c-.9.5-1.2 1-1.2 2"/><line x1="12" y1="17" x2="12" y2="17.1"/></svg>', title: q.questionText, body: q.modelAnswer || '(No model answer recorded)', tag: 'Hard', _subj: q.subjectId });
       }
     });
     (Cache.mnemonics || []).forEach(m => {
       if (subjectId && topicSubjectId(m.topicId) !== subjectId) return;
       if (m.favorite) {
-        items.push({ type: 'Mnemonic', icon: '🧠', title: m.title, body: `${m.mnemonicText}\n${m.meaning}`, tag: 'Favorite', _subj: topicSubjectId(m.topicId) });
+        items.push({ type: 'Mnemonic', icon: '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4.5a2.5 2.5 0 0 0-2.4 3.3A2.6 2.6 0 0 0 5 10.3v.2A2.6 2.6 0 0 0 4 12.5 2.6 2.6 0 0 0 5.3 14.7 2.5 2.5 0 0 0 7.5 18.5a2.4 2.4 0 0 0 1-.2A2.5 2.5 0 0 0 11 20a2.5 2.5 0 0 0 2.5-2.5v-10A2.5 2.5 0 0 0 11 5a2.4 2.4 0 0 0-2-.5z"/><path d="M15 4.5a2.5 2.5 0 0 1 2.4 3.3A2.6 2.6 0 0 1 19 10.3v.2a2.6 2.6 0 0 1 1 2 2.6 2.6 0 0 1-1.3 2.2 2.5 2.5 0 0 1-2.2 3.8 2.4 2.4 0 0 1-1-.2A2.5 2.5 0 0 1 13 17.5v-10A2.5 2.5 0 0 1 15.5 5a2.4 2.4 0 0 1-.5-.5z"/></svg>', title: m.title, body: `${m.mnemonicText}\n${m.meaning}`, tag: 'Favorite', _subj: topicSubjectId(m.topicId) });
       }
     });
     return items;
@@ -3196,7 +3253,7 @@ const LMR = {
   },
   renderStream() {
     if (this.index >= this.items.length) {
-      return `<div class="empty-state"><div style="font-size:38px;">🎉</div><h3>That's everything marked important.</h3>
+      return `<div class="empty-state"><div style="font-size:38px;"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20 15 9"/><path d="M13 4.5 15.5 7"/><path d="M17.5 3 19 4.5"/><path d="M17 8 19.5 10.5"/><path d="M4 20l3.5-1L6 15.5z"/><circle cx="9.5" cy="6.5" r="1"/><circle cx="19.5" cy="14.5" r="1"/></svg></div><h3>That's everything marked important.</h3>
       <button class="btn" onclick="LMR.reset()" title="Choose a different subject">Back to setup</button></div>`;
     }
     const it = this.items[this.index];
@@ -3255,9 +3312,9 @@ const Cloze = {
     UI.nav('cloze');
   },
   render() {
-    if (!this.items.length) return emptyState('📇', 'No cloze session active — open a note and click "Cloze Review".', null, null);
+    if (!this.items.length) return emptyState('<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="2"/><line x1="3" y1="10.5" x2="21" y2="10.5"/></svg>', 'No cloze session active — open a note and click "Cloze Review".', null, null);
     if (this.index >= this.items.length) {
-      return `<h2>Cloze Review complete 🎉</h2>
+      return `<h2>Cloze Review complete <svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20 15 9"/><path d="M13 4.5 15.5 7"/><path d="M17.5 3 19 4.5"/><path d="M17 8 19.5 10.5"/><path d="M4 20l3.5-1L6 15.5z"/><circle cx="9.5" cy="6.5" r="1"/><circle cx="19.5" cy="14.5" r="1"/></svg></h2>
         <div class="card" style="max-width:420px;">
           <div class="subtle">From: ${esc(this.noteTitle)}</div>
           <h2 style="margin:10px 0;">${this.correct} / ${this.items.length} recalled</h2>
@@ -3292,14 +3349,14 @@ const TopicQuiz = {
     const subjId = chapter?.subjectId;
     const items = [];
     (Cache.mnemonics || []).filter((m) => m.topicId === topicId).forEach((m) => {
-      items.push({ type: 'Mnemonic', icon: '🧠', front: `Mnemonic for "${m.title}"?`, back: `${m.mnemonicText}${m.meaning ? '\n' + m.meaning : ''}` });
+      items.push({ type: 'Mnemonic', icon: '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4.5a2.5 2.5 0 0 0-2.4 3.3A2.6 2.6 0 0 0 5 10.3v.2A2.6 2.6 0 0 0 4 12.5 2.6 2.6 0 0 0 5.3 14.7 2.5 2.5 0 0 0 7.5 18.5a2.4 2.4 0 0 0 1-.2A2.5 2.5 0 0 0 11 20a2.5 2.5 0 0 0 2.5-2.5v-10A2.5 2.5 0 0 0 11 5a2.4 2.4 0 0 0-2-.5z"/><path d="M15 4.5a2.5 2.5 0 0 1 2.4 3.3A2.6 2.6 0 0 1 19 10.3v.2a2.6 2.6 0 0 1 1 2 2.6 2.6 0 0 1-1.3 2.2 2.5 2.5 0 0 1-2.2 3.8 2.4 2.4 0 0 1-1-.2A2.5 2.5 0 0 1 13 17.5v-10A2.5 2.5 0 0 1 15.5 5a2.4 2.4 0 0 1-.5-.5z"/></svg>', front: `Mnemonic for "${m.title}"?`, back: `${m.mnemonicText}${m.meaning ? '\n' + m.meaning : ''}` });
     });
     (Cache.questions || []).filter((q) => q.topicId === topicId).forEach((q) => {
-      items.push({ type: 'Question', icon: '❓', front: q.questionText, back: (q.modelAnswer && q.modelAnswer.trim()) ? q.modelAnswer : '(No model answer recorded)' });
+      items.push({ type: 'Question', icon: '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.2a2.5 2.5 0 1 1 3.7 2.3c-.9.5-1.2 1-1.2 2"/><line x1="12" y1="17" x2="12" y2="17.1"/></svg>', front: q.questionText, back: (q.modelAnswer && q.modelAnswer.trim()) ? q.modelAnswer : '(No model answer recorded)' });
     });
     if (subjId) {
       (Cache.jargons || []).filter((j) => j.subjectId === subjId).forEach((j) => {
-        items.push({ type: 'Jargon', icon: '🔤', front: j.term, back: j.meaning + (j.memoryTrick ? `\n💡 ${j.memoryTrick}` : '') });
+        items.push({ type: 'Jargon', icon: '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5V6a2 2 0 0 1 2-2h13v15H6a2 2 0 0 0 0 4h13"/><line x1="9" y1="8" x2="15" y2="8"/></svg>', front: j.term, back: j.meaning + (j.memoryTrick ? `\n<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6"/><path d="M10 21h4"/><path d="M12 3a6.5 6.5 0 0 0-3.8 11.8c.5.4.8 1 .8 1.7v.5h6v-.5c0-.7.3-1.3.8-1.7A6.5 6.5 0 0 0 12 3z"/></svg> ${j.memoryTrick}` : '') });
       });
     }
     return items;
@@ -3314,9 +3371,9 @@ const TopicQuiz = {
     UI.nav('topicquiz');
   },
   render() {
-    if (!this.items.length) return emptyState('🎯', 'No quiz session active — open a topic and click "Quiz me".', null, null);
+    if (!this.items.length) return emptyState('<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/></svg>', 'No quiz session active — open a topic and click "Quiz me".', null, null);
     if (this.index >= this.items.length) {
-      return `<h2>Quiz complete 🎉</h2>
+      return `<h2>Quiz complete <svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20 15 9"/><path d="M13 4.5 15.5 7"/><path d="M17.5 3 19 4.5"/><path d="M17 8 19.5 10.5"/><path d="M4 20l3.5-1L6 15.5z"/><circle cx="9.5" cy="6.5" r="1"/><circle cx="19.5" cy="14.5" r="1"/></svg></h2>
         <div class="card" style="max-width:420px;">
           <div class="subtle">Topic: ${esc(this.topicName)}</div>
           <h2 style="margin:10px 0;">${this.correct} / ${this.items.length} correct</h2>
@@ -3387,9 +3444,9 @@ const Timer = {
 const TrashView = {
   render() {
     const items = Cache.trash || [];
-    if (!items.length) return emptyState('🗑', 'Trash is empty.', null, null);
+    if (!items.length) return emptyState('<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="7" x2="20" y2="7"/><path d="M6 7v13a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V7"/><path d="M9 7V4.5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1V7"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>', 'Trash is empty.', null, null);
     return `<h2>Trash</h2>${items.map(t => `<div class="list-row">
-      <span>🗑</span><div style="flex:1;">${esc(t.data.title || t.data.term || t.data.questionText || t.data.name || 'Item')}<div class="subtle">${t.type} · deleted ${fmtDate(t.deletedAt)}</div></div>
+      <span><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="7" x2="20" y2="7"/><path d="M6 7v13a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V7"/><path d="M9 7V4.5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1V7"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg></span><div style="flex:1;">${esc(t.data.title || t.data.term || t.data.questionText || t.data.name || 'Item')}<div class="subtle">${t.type} · deleted ${fmtDate(t.deletedAt)}</div></div>
       <button class="btn sm secondary" onclick="restoreTrash('${t.id}');Router.render();" title="Restore this item to where it was">Restore</button>
       <button class="btn sm danger" onclick="TrashView.purge('${t.id}')" title="Permanently delete — this cannot be undone">Delete forever</button>
     </div>`).join('')}
@@ -3420,15 +3477,15 @@ const SettingsView = {
     <div class="card" style="max-width:520px;margin-bottom:14px;">
       <h4 style="margin-top:0;">Backup & Restore</h4>
       <p class="subtle">Export everything (notes, subjects, questions, mnemonics, jargons, revision data, settings, annotations, bookmarks) to a JSON file. PDFs are excluded from JSON backup — export them separately below.</p>
-      <button class="btn sm" onclick="BackupService.exportJSON()" title="Download all your data as a JSON file">⬇ Export backup (.json)</button>
+      <button class="btn sm" onclick="BackupService.exportJSON()" title="Download all your data as a JSON file"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><polyline points="7.5 11 12 15.5 16.5 11"/><path d="M5 18.5h14"/></svg> Export backup (.json)</button>
       <input type="file" id="restoreInput" accept="application/json" style="display:none" onchange="BackupService.importJSON(this)">
       <button class="btn sm secondary" onclick="document.getElementById('restoreInput').click()" title="Choose a previously exported backup file">⬆ Restore from backup</button>
     </div>
     <div class="card" style="max-width:520px;margin-bottom:14px;">
       <h4 style="margin-top:0;">Readable Exports</h4>
       <p class="subtle">Unlike the JSON backup above (meant for restoring into this app), these are plain-text Markdown files meant for reading, printing, or sharing outside the app — organized and human-readable.</p>
-      <button class="btn sm secondary" onclick="BackupService.exportAllNotesMarkdown()" title="One Markdown file with every note, organized by subject and chapter">⬇ All notes (Markdown)</button>
-      <button class="btn sm secondary" style="margin-top:6px;" onclick="BackupService.exportHighlightsMarkdown()" title="One Markdown file with every highlight, annotation and sticky note across your notes and PDFs">⬇ All highlights &amp; annotations (Markdown)</button>
+      <button class="btn sm secondary" onclick="BackupService.exportAllNotesMarkdown()" title="One Markdown file with every note, organized by subject and chapter"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><polyline points="7.5 11 12 15.5 16.5 11"/><path d="M5 18.5h14"/></svg> All notes (Markdown)</button>
+      <button class="btn sm secondary" style="margin-top:6px;" onclick="BackupService.exportHighlightsMarkdown()" title="One Markdown file with every highlight, annotation and sticky note across your notes and PDFs"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><polyline points="7.5 11 12 15.5 16.5 11"/><path d="M5 18.5h14"/></svg> All highlights &amp; annotations (Markdown)</button>
     </div>
     <div class="card" style="max-width:520px;margin-bottom:14px;">
       <h4 style="margin-top:0;">Google Drive Sync</h4>
@@ -3448,7 +3505,7 @@ const SettingsView = {
       <button class="btn sm" style="margin-top:8px;" onclick="SettingsView.saveClientId()" title="Save this Client ID">Save Client ID</button>`;
     if (clientId) {
       if (DriveSync.connected) {
-        html += `<div class="pill" style="margin-top:12px;">✅ Connected</div>
+        html += `<div class="pill" style="margin-top:12px;"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><polyline points="7.5 12.5 10.5 15.5 16.5 8.5"/></svg> Connected</div>
           <div class="subtle" style="margin-top:4px;">Last synced: ${lastSynced ? fmtDate(lastSynced) + ' · ' + new Date(lastSynced).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'not yet'}</div>
           <div class="note-meta-row" style="margin-top:10px;">
             <button class="btn sm secondary" onclick="DriveSync.syncNow()" title="Push your latest data to Drive right now">Sync now</button>
@@ -3624,7 +3681,7 @@ const BackupService = {
       any = true;
       const byPdf = {};
       drawings.forEach(a => { const pdf = (Cache.pdfs || []).find(p => p.id === a.pdfId); const key = pdf ? pdf.title : 'PDF'; byPdf[key] = (byPdf[key] || 0) + 1; });
-      md += `\n## PDF drawings\n\n(Freehand drawings don't have text content — counted here; open the PDF to view them, or use "⬇ Export PDF" on that PDF to get them burned into a downloadable copy.)\n\n`;
+      md += `\n## PDF drawings\n\n(Freehand drawings don't have text content — counted here; open the PDF to view them, or use "<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><polyline points="7.5 11 12 15.5 16.5 11"/><path d="M5 18.5h14"/></svg> Export PDF" on that PDF to get them burned into a downloadable copy.)\n\n`;
       Object.entries(byPdf).forEach(([title, count]) => { md += `- **${title}** — ${count} drawing(s)\n`; });
     }
 
@@ -3651,14 +3708,14 @@ const DriveSync = {
     if (!Settings.get('googleClientId')) { el.style.display = 'none'; return; }
     el.style.display = 'inline-block';
     if (this.syncing) {
-      el.textContent = '☁ Syncing…'; el.className = 'pill'; el.title = 'Sync with Google Drive in progress';
+      el.innerHTML = '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18a4.5 4.5 0 0 1-.5-9 5.5 5.5 0 0 1 10.7-2A4.5 4.5 0 0 1 17 18z"/></svg> Syncing…'; el.className = 'pill'; el.title = 'Sync with Google Drive in progress';
     } else if (!this.connected) {
-      el.textContent = '☁ Drive: not connected'; el.className = 'pill'; el.title = 'Click to connect Google Drive sync in Settings';
+      el.innerHTML = '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18a4.5 4.5 0 0 1-.5-9 5.5 5.5 0 0 1 10.7-2A4.5 4.5 0 0 1 17 18z"/></svg> Drive: not connected'; el.className = 'pill'; el.title = 'Click to connect Google Drive sync in Settings';
     } else if (this.lastSyncError) {
-      el.textContent = '⚠ Drive sync failed'; el.className = 'pill warn'; el.title = this.lastSyncError + ' — click to open Settings';
+      el.innerHTML = '⚠ Drive sync failed'; el.className = 'pill warn'; el.title = this.lastSyncError + ' — click to open Settings';
     } else {
       const last = Settings.get('googleLastSynced');
-      el.textContent = '☁ Synced ' + (last ? relTime(last) : '(pending)');
+      el.innerHTML = '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18a4.5 4.5 0 0 1-.5-9 5.5 5.5 0 0 1 10.7-2A4.5 4.5 0 0 1 17 18z"/></svg> Synced ' + (last ? relTime(last) : '(pending)');
       el.className = 'pill';
       el.title = last ? `Last synced ${fmtDate(last)} · ${new Date(last).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} — click to open Settings` : 'Connected to Google Drive — click to open Settings';
     }
@@ -4048,7 +4105,7 @@ function moveButtonsHTML(store, parentKey, parentId, id) {
   const siblings = (Cache[store] || []).filter(x => x[parentKey] === parentId).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   const idx = siblings.findIndex(x => x.id === id);
   const isFirst = idx <= 0, isLast = idx === -1 || idx >= siblings.length - 1;
-  return `<button class="move-mini" onclick="event.stopPropagation();Tree.moveOrder('${store}','${parentKey}','${parentId}','${id}',-1)" ${isFirst ? 'disabled' : ''} title="Move up" aria-label="Move up">▲</button><button class="move-mini" onclick="event.stopPropagation();Tree.moveOrder('${store}','${parentKey}','${parentId}','${id}',1)" ${isLast ? 'disabled' : ''} title="Move down" aria-label="Move down">▼</button>`;
+  return `<button class="move-mini" onclick="event.stopPropagation();Tree.moveOrder('${store}','${parentKey}','${parentId}','${id}',-1)" ${isFirst ? 'disabled' : ''} title="Move up" aria-label="Move up"><svg class="ico" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="19" x2="12" y2="6"/><polyline points="6.5 11.5 12 6 17.5 11.5"/></svg></button><button class="move-mini" onclick="event.stopPropagation();Tree.moveOrder('${store}','${parentKey}','${parentId}','${id}',1)" ${isLast ? 'disabled' : ''} title="Move down" aria-label="Move down"><svg class="ico" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="18"/><polyline points="6.5 12.5 12 18 17.5 12.5"/></svg></button>`;
 }
 function emptyState(icon, msg, btnLabel, btnAction) {
   return `<div class="empty-state"><div style="font-size:38px;">${icon}</div><h3>${esc(msg)}</h3>
@@ -4115,7 +4172,7 @@ const Dashboard = {
         <h2 class="focus-greeting">${greeting}. Ready to sharpen your edge?</h2>
         <div class="focus-stats-row">
           <div title="Total minutes logged via the Study Timer today"><span class="focus-stat-value">${todayMins}</span><span class="focus-stat-label">min today</span></div>
-          <div title="Consecutive days with study activity — see Analytics for details"><span class="focus-stat-value">${streak}🔥</span><span class="focus-stat-label">day streak</span></div>
+          <div title="Consecutive days with study activity — see Analytics for details"><span class="focus-stat-value">${streak}<svg class="ico" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="margin-left:5px;color:#D9853C;vertical-align:-1px;"><path d="M12 3s3 3 3 6.5A3 3 0 0 1 9 9.5C9 12 6 13 6 16a6 6 0 0 0 12 0c0-4-2-5-2-8 0 0-1 2-2 2s1-4-2-7z"/></svg></span><span class="focus-stat-label">day streak</span></div>
           <div title="Notes and flashcards scheduled for review today"><span class="focus-stat-value ${due.length ? 'flag' : ''}">${due.length}</span><span class="focus-stat-label">due today</span></div>
         </div>
         ${due.length ? `<button class="btn sm" onclick="UI.nav('revision')" title="Go to the revision queue">Start Revision</button>` : `<button class="btn sm secondary" onclick="UI.nav('analytics')" title="See streaks, weak/strong topics and more">View Analytics</button>`}
@@ -4156,7 +4213,7 @@ const Dashboard = {
     </div>
     <h3 style="margin-top:22px;">Continue studying</h3>
     ${recentNotes.length ? recentNotes.map(n => `<div class="list-row" onclick="UI.nav('note',{id:'${n.id}'})" title="Open this note">
-      <span>📝</span><div style="flex:1;">${esc(n.title)}<div class="subtle">${subjectName(n.subjectId)} · updated ${fmtDateShort(n.updatedAt || n.createdAt)}</div></div>
+      <span><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="16.5" x2="15" y2="16.5"/></svg></span><div style="flex:1;">${esc(n.title)}<div class="subtle">${subjectName(n.subjectId)} · updated ${fmtDateShort(n.updatedAt || n.createdAt)}</div></div>
     </div>`).join('') : `<div class="subtle">No notes yet — create your first one.</div>`}
     <h3 style="margin-top:22px;">Subject progress</h3>
     ${progress.length ? progress.map(p => `<div style="margin-bottom:10px;" title="Share of this subject's notes marked as mastered">
@@ -4252,10 +4309,10 @@ function TopicView(id) {
     <button class="btn sm secondary" onclick="Mnemonics.promptNew('${id}')" title="Create a mnemonic linked to this topic">+ Mnemonic</button>
     <button class="btn sm secondary" onclick="Questions.promptNew('${id}')" title="Add a question linked to this topic">+ Question</button>
     <button class="btn sm secondary" onclick="Flashcards.promptNew('${id}')" title="Create a standalone flashcard — for a fact that doesn't fit a mnemonic or question">+ Flashcard</button>
-    <button class="btn sm secondary" onclick="TopicQuiz.start('${id}')" title="Mixed self-test pulling together this topic's mnemonics, questions, and its subject's jargon">🎯 Quiz me</button>
+    <button class="btn sm secondary" onclick="TopicQuiz.start('${id}')" title="Mixed self-test pulling together this topic's mnemonics, questions, and its subject's jargon"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/></svg> Quiz me</button>
   </div>
-  <h3>Notes <span class="subtle" style="font-weight:normal;font-size:12px;">(drag, or use ▲▼, to reorder)</span>
-    ${notes.length ? `<button class="btn sm secondary" style="margin-left:8px;font-weight:normal;" onclick="TopicNotesBulk.toggleSelectMode()" title="${TopicNotesBulk.selectMode ? 'Exit multi-select' : 'Select multiple notes to tag, move, or delete together'}">${TopicNotesBulk.selectMode ? '✕ Cancel Select' : '☑ Select'}</button>` : ''}
+  <h3>Notes <span class="subtle" style="font-weight:normal;font-size:12px;">(drag, or use <svg class="ico" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="19" x2="12" y2="6"/><polyline points="6.5 11.5 12 6 17.5 11.5"/></svg><svg class="ico" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="18"/><polyline points="6.5 12.5 12 18 17.5 12.5"/></svg>, to reorder)</span>
+    ${notes.length ? `<button class="btn sm secondary" style="margin-left:8px;font-weight:normal;" onclick="TopicNotesBulk.toggleSelectMode()" title="${TopicNotesBulk.selectMode ? 'Exit multi-select' : 'Select multiple notes to tag, move, or delete together'}">${TopicNotesBulk.selectMode ? '<svg class="ico" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg> Cancel Select' : '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 12.5 11.5 15 17 8.5"/><rect x="3.5" y="3.5" width="17" height="17" rx="3"/></svg> Select'}</button>` : ''}
   </h3>
   ${TopicNotesBulk.selectMode && TopicNotesBulk.selectedIds.size ? `<div class="card" style="margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
     <b>${TopicNotesBulk.selectedIds.size} selected</b>
@@ -4270,18 +4327,18 @@ function TopicView(id) {
   ${notes.length ? notes.map(n => `<div class="list-row" draggable="true"
       ondragstart="Tree.dragStart(event,'note','${n.id}')" ondragover="Tree.allowDrop(event)"
       ondrop="Tree.onDrop(event,'note','notes','topicId','${id}','${n.id}')"
-      onclick="UI.nav('note',{id:'${n.id}'})" title="Open this note">${TopicNotesBulk.selectMode ? `<input type="checkbox" ${TopicNotesBulk.selectedIds.has(n.id) ? 'checked' : ''} onclick="event.stopPropagation();TopicNotesBulk.toggleSelect('${n.id}')" title="Select this note">` : '<span>📝</span>'}<div style="flex:1;">${esc(n.title)}</div><span onclick="event.stopPropagation();">${moveButtonsHTML('notes', 'topicId', id, n.id)}</span></div>`).join('') : `<div class="subtle">No notes yet.</div>`}
+      onclick="UI.nav('note',{id:'${n.id}'})" title="Open this note">${TopicNotesBulk.selectMode ? `<input type="checkbox" ${TopicNotesBulk.selectedIds.has(n.id) ? 'checked' : ''} onclick="event.stopPropagation();TopicNotesBulk.toggleSelect('${n.id}')" title="Select this note">` : '<span><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="16.5" x2="15" y2="16.5"/></svg></span>'}<div style="flex:1;">${esc(n.title)}</div><span onclick="event.stopPropagation();">${moveButtonsHTML('notes', 'topicId', id, n.id)}</span></div>`).join('') : `<div class="subtle">No notes yet.</div>`}
   <h3 style="margin-top:18px;">PDFs</h3>
-  ${topicPdfs.length ? topicPdfs.map(p => `<div class="list-row" onclick="UI.nav('pdf',{id:'${p.id}'})" title="Open this PDF"><span>📄</span><div style="flex:1;">${esc(p.title)}${p.pageCount ? `<div class="subtle">${p.pageCount} page${p.pageCount === 1 ? '' : 's'}</div>` : ''}</div></div>`).join('') : `<div class="subtle">None yet — click "+ Import PDF" above to add one right here.</div>`}
+  ${topicPdfs.length ? topicPdfs.map(p => `<div class="list-row" onclick="UI.nav('pdf',{id:'${p.id}'})" title="Open this PDF"><span><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5"/></svg></span><div style="flex:1;">${esc(p.title)}${p.pageCount ? `<div class="subtle">${p.pageCount} page${p.pageCount === 1 ? '' : 's'}</div>` : ''}</div></div>`).join('') : `<div class="subtle">None yet — click "+ Import PDF" above to add one right here.</div>`}
   <h3 style="margin-top:18px;">Mnemonics</h3>
   ${mnemonics.length ? mnemonics.map(m => `<div class="card" style="margin-bottom:8px;"><b>${esc(m.title)}</b> — <span class="pill">${esc(m.mnemonicText)}</span></div>`).join('') : `<div class="subtle">None yet.</div>`}
   <h3 style="margin-top:18px;">Questions</h3>
-  ${questions.length ? questions.map(q => `<div class="subtle" style="margin-bottom:6px;">❓ ${esc(q.questionText)}</div>`).join('') : `<div class="subtle">None yet.</div>`}
+  ${questions.length ? questions.map(q => `<div class="subtle" style="margin-bottom:6px;"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.2a2.5 2.5 0 1 1 3.7 2.3c-.9.5-1.2 1-1.2 2"/><line x1="12" y1="17" x2="12" y2="17.1"/></svg> ${esc(q.questionText)}</div>`).join('') : `<div class="subtle">None yet.</div>`}
   <h3 style="margin-top:18px;">Flashcards</h3>
-  ${manualFlashcards.length ? manualFlashcards.map(f => `<div class="list-row"><span>🃏</span><div style="flex:1;">${esc(f.front)}</div><span class="del-mini" onclick="Flashcards.deleteManual('${f.id}')" title="Delete this flashcard">✕</span></div>`).join('') : `<div class="subtle">None yet — click "+ Flashcard" above for a standalone fact (mnemonics and questions already get their own automatically).</div>`}
+  ${manualFlashcards.length ? manualFlashcards.map(f => `<div class="list-row"><span><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="2"/><line x1="3" y1="10.5" x2="21" y2="10.5"/></svg></span><div style="flex:1;">${esc(f.front)}</div><span class="del-mini" onclick="Flashcards.deleteManual('${f.id}')" title="Delete this flashcard"><svg class="ico" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></span></div>`).join('') : `<div class="subtle">None yet — click "+ Flashcard" above for a standalone fact (mnemonics and questions already get their own automatically).</div>`}
   ${(relatedJargons.length || relatedPdfs.length) ? `<h3 style="margin-top:18px;">Related (same subject, other topics)</h3>
-  ${relatedJargons.map(j => `<div class="subtle" style="cursor:pointer;" onclick="UI.nav('jargons')" title="Open Jargons">🔤 ${esc(j.term)}</div>`).join('')}
-  ${relatedPdfs.map(p => `<div class="subtle" style="cursor:pointer;" onclick="UI.nav('pdf',{id:'${p.id}'})" title="Open this PDF">📄 ${esc(p.title)}</div>`).join('')}` : ''}
+  ${relatedJargons.map(j => `<div class="subtle" style="cursor:pointer;" onclick="UI.nav('jargons')" title="Open Jargons"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5V6a2 2 0 0 1 2-2h13v15H6a2 2 0 0 0 0 4h13"/><line x1="9" y1="8" x2="15" y2="8"/></svg> ${esc(j.term)}</div>`).join('')}
+  ${relatedPdfs.map(p => `<div class="subtle" style="cursor:pointer;" onclick="UI.nav('pdf',{id:'${p.id}'})" title="Open this PDF"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5"/></svg> ${esc(p.title)}</div>`).join('')}` : ''}
   `;
 }
 
@@ -4361,7 +4418,7 @@ const Focus = {
     if (!document.getElementById('focusExitBtn')) {
       const btn = document.createElement('button');
       btn.id = 'focusExitBtn'; btn.className = 'btn secondary focus-exit-btn';
-      btn.textContent = '✕ Exit Focus (Esc)';
+      btn.innerHTML = '<svg class="ico" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg> Exit Focus (Esc)';
       btn.onclick = () => Focus.exit();
       document.body.appendChild(btn);
     }

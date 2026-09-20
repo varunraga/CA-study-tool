@@ -39,6 +39,8 @@ html.sepia{
   --glow: 0 0 0 1px rgba(156,107,31,.18), 0 4px 16px rgba(156,107,31,.10);
 }
 *{box-sizing:border-box;}
+.ico{vertical-align:-3px;flex-shrink:0;}
+.ico-lg{vertical-align:-7px;}
 body{margin:0;font-family:var(--sans);background:var(--bg);color:var(--text);font-size:15px;line-height:1.55;}
 h1,h2,h3,.serif{font-family:var(--serif);font-weight:600;}
 a{color:inherit;}
@@ -298,51 +300,56 @@ body.focus-mode .content { max-width: 780px; margin: 0 auto; padding-top: 50px; 
 
   <aside class="sidebar" id="sidebar">
     <div class="sidebar-header">
-      <img src="sidebar-logo.png" alt="CA Study logo" class="sidebar-seal">
+      <svg class="sidebar-seal" width="38" height="38" viewBox="0 0 40 40" aria-hidden="true">
+        <rect x="1" y="1" width="38" height="38" rx="11" fill="url(#sealGrad)" stroke="rgba(217,178,76,.4)" stroke-width="1"/>
+        <path d="M11 13.5c3-1.5 6-1.5 9 0v14c-3-1.5-6-1.5-9 0z" fill="none" stroke="#D9B24C" stroke-width="1.6" stroke-linejoin="round"/>
+        <path d="M29 13.5c-3-1.5-6-1.5-9 0v14c3-1.5 6-1.5 9 0z" fill="none" stroke="#D9B24C" stroke-width="1.6" stroke-linejoin="round"/>
+        <defs><linearGradient id="sealGrad" x1="0" y1="0" x2="40" y2="40"><stop offset="0" stop-color="#20242D"/><stop offset="1" stop-color="#12151A"/></linearGradient></defs>
+      </svg>
       <div class="sidebar-wordmark">Study<small>The Reading Room</small></div>
     </div>
     <div class="sidebar-section">
-      <button class="nav-item" data-route="dashboard" onclick="UI.nav('dashboard')" title="Today's overview: study time, revision due, recent notes">🏠 Dashboard</button>
-      <button class="nav-item" data-route="inbox" onclick="UI.nav('inbox')" title="Quick-captured stray thoughts, not yet filed into a topic">📥 Inbox <span class="badge" id="inboxBadge">0</span></button>
-      <button class="nav-item nav-item-featured" data-route="subjects" onclick="UI.nav('subjects')" title="Your whole syllabus — subjects, chapters and topics, browsable and color-coded">📚 Subjects</button>
-      <button class="nav-item" data-route="search" onclick="UI.nav('search')" title="Full search with filters by type, subject and sort order">🔍 Search &amp; Filters</button>
-      <button class="nav-item" data-route="analytics" onclick="UI.nav('analytics')" title="Streaks, weak/strong topics, and subject breakdown">📊 Analytics</button>
-      <button class="nav-item" data-route="pdfs" onclick="UI.nav('pdfs')" title="Upload, read and annotate PDFs">📄 PDF Library</button>
-      <button class="nav-item" data-route="questions" onclick="UI.nav('questions')" title="Your question bank — theory, MCQ, true/false, fill-in-the-blank">❓ Questions</button>
-      <button class="nav-item" data-route="revision" onclick="UI.nav('revision')" title="Spaced-repetition queue: notes and flashcards due today">🔁 Revision <span class="badge" id="revBadge">0</span></button>
-      <button class="nav-item" data-route="exam" onclick="UI.nav('exam')" title="Timed practice exam with self- or auto-grading">🎓 Exam Mode</button>
-      <button class="nav-item" data-route="lmr" onclick="UI.nav('lmr')" title="Rapid-fire review of only your highest-priority content">⚡ Last-Minute Revision</button>
-      <button class="nav-item" data-route="mnemonics" onclick="UI.nav('mnemonics')" title="Memory aids and mnemonics you've created">🧠 Mnemonics</button>
-      <button class="nav-item" data-route="jargons" onclick="UI.nav('jargons')" title="Terms, keywords and abbreviations">🔤 Jargons</button>
-      <button class="nav-item" data-route="bookmarks" onclick="UI.nav('bookmarks')" title="Notes and PDF pages you've bookmarked">🔖 Bookmarks</button>
-      <button class="nav-item" data-route="focus" onclick="UI.nav('focus')" title="Pomodoro-style study timer with session logging">⏱ Study Timer</button>
+      <button class="nav-item" data-route="dashboard" onclick="UI.nav('dashboard')" title="Today's overview: study time, revision due, recent notes"><svg class="ico" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11.5 12 4l8 7.5"/><path d="M6 10v9a1 1 0 0 0 1 1h3v-6h4v6h3a1 1 0 0 0 1-1v-9"/></svg> Dashboard</button>
+      <button class="nav-item" data-route="inbox" onclick="UI.nav('inbox')" title="Quick-captured stray thoughts, not yet filed into a topic"><svg class="ico" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12h4l2 3h4l2-3h4"/><path d="M4 12 5.5 5a1 1 0 0 1 1-.8h11a1 1 0 0 1 1 .8L20 12v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/></svg> Inbox <span class="badge" id="inboxBadge">0</span></button>
+      <button class="nav-item nav-item-featured" data-route="subjects" onclick="UI.nav('subjects')" title="Your whole syllabus — subjects, chapters and topics, browsable and color-coded"><svg class="ico" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4 3 9l9 5 9-5z"/><path d="M3 14l9 5 9-5"/></svg> Subjects</button>
+      <button class="nav-item" data-route="search" onclick="UI.nav('search')" title="Full search with filters by type, subject and sort order"><svg class="ico" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><line x1="20" y1="20" x2="15.3" y2="15.3"/></svg> Search &amp; Filters</button>
+      <button class="nav-item" data-route="analytics" onclick="UI.nav('analytics')" title="Streaks, weak/strong topics, and subject breakdown"><svg class="ico" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="5" y1="20" x2="5" y2="12"/><line x1="12" y1="20" x2="12" y2="7"/><line x1="19" y1="20" x2="19" y2="15"/><line x1="3" y1="20" x2="21" y2="20"/></svg> Analytics</button>
+      <button class="nav-item" data-route="pdfs" onclick="UI.nav('pdfs')" title="Upload, read and annotate PDFs"><svg class="ico" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="16.5" x2="15" y2="16.5"/></svg> PDF Library</button>
+      <button class="nav-item" data-route="questions" onclick="UI.nav('questions')" title="Your question bank — theory, MCQ, true/false, fill-in-the-blank"><svg class="ico" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.2a2.5 2.5 0 1 1 3.7 2.3c-.9.5-1.2 1-1.2 2"/><line x1="12" y1="17" x2="12" y2="17.1"/></svg> Questions</button>
+      <button class="nav-item" data-route="revision" onclick="UI.nav('revision')" title="Spaced-repetition queue: notes and flashcards due today"><svg class="ico" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10a8 8 0 0 1 14-4.9M20 5v5h-5"/><path d="M20 14a8 8 0 0 1-14 4.9M4 19v-5h5"/></svg> Revision <span class="badge" id="revBadge">0</span></button>
+      <button class="nav-item" data-route="exam" onclick="UI.nav('exam')" title="Timed practice exam with self- or auto-grading"><svg class="ico" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 9.5 12 5l10 4.5-10 4.5z"/><path d="M6 12v5c0 1 2.7 2.5 6 2.5s6-1.5 6-2.5v-5"/><path d="M22 9.5v5.5"/></svg> Exam Mode</button>
+      <button class="nav-item" data-route="lmr" onclick="UI.nav('lmr')" title="Rapid-fire review of only your highest-priority content"><svg class="ico" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="13 2 4 14 11 14 10 22 20 10 13 10"/></svg> Last-Minute Revision</button>
+      <button class="nav-item" data-route="mnemonics" onclick="UI.nav('mnemonics')" title="Memory aids and mnemonics you've created"><svg class="ico" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4.5a2.5 2.5 0 0 0-2.4 3.3A2.6 2.6 0 0 0 5 10.3v.2A2.6 2.6 0 0 0 4 12.5 2.6 2.6 0 0 0 5.3 14.7 2.5 2.5 0 0 0 7.5 18.5a2.4 2.4 0 0 0 1-.2A2.5 2.5 0 0 0 11 20a2.5 2.5 0 0 0 2.5-2.5v-10A2.5 2.5 0 0 0 11 5a2.4 2.4 0 0 0-2-.5z"/><path d="M15 4.5a2.5 2.5 0 0 1 2.4 3.3A2.6 2.6 0 0 1 19 10.3v.2a2.6 2.6 0 0 1 1 2 2.6 2.6 0 0 1-1.3 2.2 2.5 2.5 0 0 1-2.2 3.8 2.4 2.4 0 0 1-1-.2A2.5 2.5 0 0 1 13 17.5v-10A2.5 2.5 0 0 1 15.5 5a2.4 2.4 0 0 1-.5-.5z"/></svg> Mnemonics</button>
+      <button class="nav-item" data-route="jargons" onclick="UI.nav('jargons')" title="Terms, keywords and abbreviations"><svg class="ico" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5V6a2 2 0 0 1 2-2h13v15H6a2 2 0 0 0 0 4h13"/><line x1="9" y1="8" x2="15" y2="8"/></svg> Jargons</button>
+      <button class="nav-item" data-route="bookmarks" onclick="UI.nav('bookmarks')" title="Notes and PDF pages you've bookmarked"><svg class="ico" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h12v18l-6-4.5L6 21z"/></svg> Bookmarks</button>
+      <button class="nav-item" data-route="focus" onclick="UI.nav('focus')" title="Pomodoro-style study timer with session logging"><svg class="ico" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/></svg> Study Timer</button>
     </div>
     <div style="flex:1"></div>
     <div class="sidebar-section">
-      <button class="nav-item" data-route="trash" onclick="UI.nav('trash')" title="Deleted items — restore or permanently remove">🗑 Trash</button>
-      <button class="nav-item" data-route="settings" onclick="UI.nav('settings')" title="Theme, revision intervals, backup & restore">⚙️ Settings</button>
+      <button class="nav-item" data-route="trash" onclick="UI.nav('trash')" title="Deleted items — restore or permanently remove"><svg class="ico" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="7" x2="20" y2="7"/><path d="M6 7v13a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V7"/><path d="M9 7V4.5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1V7"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg> Trash</button>
+      <button class="nav-item" data-route="settings" onclick="UI.nav('settings')" title="Theme, revision intervals, backup & restore"><svg class="ico" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 13.5a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.9 2.9l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.9-2.9l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1h-.2a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.6-1.1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.9-2.9l.1.1a1.7 1.7 0 0 0 1.9.3h.1a1.7 1.7 0 0 0 1-1.6v-.2a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.9 2.9l-.1.1a1.7 1.7 0 0 0-.3 1.9v.1a1.7 1.7 0 0 0 1.6 1h.2a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.6 1z"/></svg> Settings</button>
     </div>
   </aside>
 
   <div class="main">
     <div class="topbar">
-      <button class="icon-btn" style="display:none" id="menuBtn" onclick="UI.toggleSidebar()" aria-label="Open menu" title="Open the subjects & navigation menu">☰</button>
+      <button class="icon-btn" style="display:none" id="menuBtn" onclick="UI.toggleSidebar()" aria-label="Open menu" title="Open the subjects & navigation menu"><svg class="ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg></button>
       <input class="search-top" placeholder="Search or run a command…  (Ctrl/Cmd+K)" onclick="CmdK.open()" readonly aria-label="Search or run a command" title="Search notes, PDFs, questions and more — or type a command like &quot;New Note&quot;">
       <div class="spacer"></div>
       <span id="driveStatusBadge" class="pill" style="display:none;cursor:pointer;" onclick="UI.nav('settings')" title="Google Drive sync status — click to manage in Settings"></span>
-      <button class="icon-btn" onclick="UI.newQuick()" title="Quick add — create a note, PDF, mnemonic, jargon or question" aria-label="Quick add">＋</button>
-      <button class="icon-btn" onclick="Theme.toggle()" title="Switch between light and dark mode" aria-label="Toggle dark mode">🌓</button>
+      <button class="icon-btn" onclick="UI.newQuick()" title="Quick add — create a note, PDF, mnemonic, jargon or question" aria-label="Quick add"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+      <button class="icon-btn" onclick="Theme.toggle()" title="Switch between light and dark mode" aria-label="Toggle dark mode"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5z"/></svg></button>
     </div>
     <div class="content" id="content"></div>
   </div>
 </div>
 
 <nav class="bottom-nav" aria-label="Primary">
-  <button data-route="dashboard" onclick="UI.nav('dashboard')" aria-label="Dashboard" title="Dashboard — today's overview"><span class="bn-icon">🏠</span>Home</button>
-  <button data-route="pdfs" onclick="UI.nav('pdfs')" aria-label="PDF Library" title="Your uploaded PDFs"><span class="bn-icon">📄</span>PDFs</button>
-  <button data-route="subjects" onclick="UI.nav('subjects')" aria-label="Browse subjects" title="Browse subjects, chapters and topics"><span class="bn-icon">📚</span>Browse</button>
-  <button data-route="revision" onclick="UI.nav('revision')" aria-label="Revision" title="Spaced-repetition revision queue"><span class="bn-icon">🔁</span>Revise</button>
-  <button onclick="CmdK.open()" aria-label="Search" title="Search everything, or run a command"><span class="bn-icon">🔍</span>Search</button>
+  <button data-route="dashboard" onclick="UI.nav('dashboard')" aria-label="Dashboard" title="Dashboard — today's overview"><span class="bn-icon"><svg class="ico" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11.5 12 4l8 7.5"/><path d="M6 10v9a1 1 0 0 0 1 1h3v-6h4v6h3a1 1 0 0 0 1-1v-9"/></svg></span>Home</button>
+  <button data-route="pdfs" onclick="UI.nav('pdfs')" aria-label="PDF Library" title="Your uploaded PDFs"><span class="bn-icon"><svg class="ico" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="16.5" x2="15" y2="16.5"/></svg></span>PDFs</button>
+  <button data-route="subjects" onclick="UI.nav('subjects')" aria-label="Browse subjects" title="Browse subjects, chapters and topics"><span class="bn-icon"><svg class="ico" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4 3 9l9 5 9-5z"/><path d="M3 14l9 5 9-5"/></svg></span>Browse</button>
+  <button data-route="revision" onclick="UI.nav('revision')" aria-label="Revision" title="Spaced-repetition revision queue"><span class="bn-icon"><svg class="ico" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10a8 8 0 0 1 14-4.9M20 5v5h-5"/><path d="M20 14a8 8 0 0 1-14 4.9M4 19v-5h5"/></svg></span>Revise</button>
+  <button onclick="CmdK.open()" aria-label="Search" title="Search everything, or run a command"><span class="bn-icon"><svg class="ico" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><line x1="20" y1="20" x2="15.3" y2="15.3"/></svg></span>Search</button>
 </nav>
 
 <input type="file" id="noteImportInput" accept=".txt,.md,.markdown,.html,.htm" style="display:none" onchange="Notes.handleImportFile(this)">
