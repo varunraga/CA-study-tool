@@ -377,8 +377,13 @@ async function clearTombstone(store, itemId) {
   Cache.tombstones = Cache.tombstones.filter(x => x.id !== t.id);
 }
 async function trashItem(store, id) {
-  const obj = Cache[store].find(x => x.id === id);
-  if (!obj) return;
+  const cacheObj = Cache[store].find(x => x.id === id);
+  if (!cacheObj) return;
+  // Cache.pdfs is deliberately blob-stripped (see loadAllToCache) to keep
+  // binary content out of memory — trashing one must snapshot the FULL
+  // record straight from IndexedDB, or "restoring" it later would bring
+  // back a title with no actual PDF behind it.
+  const obj = store === 'pdfs' ? ((await DB.get('pdfs', id)) || cacheObj) : cacheObj;
   await DB.put('trash', { id: uid(), type: store, data: obj, deletedAt: nowISO() });
   Cache.trash = await DB.all('trash');
   await DB.del(store, id);
@@ -390,7 +395,12 @@ async function restoreTrash(trashId) {
   if (!t) return;
   t.data.updatedAt = nowISO();
   await DB.put(t.type, t.data);
-  Cache[t.type] = await DB.all(t.type);
+  if (t.type === 'pdfs') {
+    const all = await DB.all('pdfs');
+    Cache.pdfs = all.map(({ blob, ...meta }) => meta); // keep the same blob-free shape as loadAllToCache
+  } else {
+    Cache[t.type] = await DB.all(t.type);
+  }
   await DB.del('trash', trashId);
   Cache.trash = Cache.trash.filter(x => x.id !== trashId);
   await clearTombstone(t.type, t.data.id);
@@ -2688,6 +2698,11 @@ const Pdfs = {
     else Pdfs.expandedAnnotIds.add(id);
     Pdfs.renderOverlay(pdfPageObj.getViewport({ scale: pdfScale }));
   },
+  closeAllMarginNotes() {
+    if (!Pdfs.expandedAnnotIds.size) return;
+    Pdfs.expandedAnnotIds.clear();
+    if (pdfPageObj) Pdfs.renderOverlay(pdfPageObj.getViewport({ scale: pdfScale }));
+  },
   // Short comments show in full; longer ones truncate to a handful of words
   // until clicked, at which point they expand right where they are (with
   // quick Edit/Delete actions) rather than opening a separate dialog.
@@ -3517,7 +3532,7 @@ const SettingsView = {
     </div>
     <div class="card" style="max-width:520px;margin-bottom:14px;">
       <h4 style="margin-top:0;">Backup & Restore</h4>
-      <p class="subtle">Export everything (notes, subjects, questions, mnemonics, jargons, revision data, settings, annotations, bookmarks) to a JSON file. PDFs are excluded from JSON backup — export them separately below.</p>
+      <p class="subtle">Export everything (notes, subjects, questions, mnemonics, jargons, revision data, settings, annotations, bookmarks) to a JSON file. This single-file export excludes PDFs (they'd make it huge) — export a PDF individually from its viewer instead. Google Drive sync below is different: it does carry your PDFs, as separate files alongside the main backup.</p>
       <button class="btn sm" onclick="BackupService.exportJSON()" title="Download all your data as a JSON file"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><polyline points="7.5 11 12 15.5 16.5 11"/><path d="M5 18.5h14"/></svg> Export backup (.json)</button>
       <input type="file" id="restoreInput" accept="application/json" style="display:none" onchange="BackupService.importJSON(this)">
       <button class="btn sm secondary" onclick="document.getElementById('restoreInput').click()" title="Choose a previously exported backup file">⬆ Restore from backup</button>
@@ -3592,8 +3607,23 @@ const BackupService = {
      a PDF individually if you need one outside the browser. */
   buildBackupObject() {
     const data = {};
-    for (const s of STORES) { if (s === 'pdfs' || s === 'noteVersions') continue; data[s] = Cache[s]; }
-    data.pdfsMeta = (Cache.pdfs || []).map(p => ({ id: p.id, filename: p.filename, title: p.title, pageCount: p.pageCount }));
+    // Cache.pdfs is already metadata-only (blob stripped for memory — see
+    // loadAllToCache), so it's safe to include directly: this carries each
+    // PDF's driveFileId so Drive sync knows which binary file it maps to,
+    // without ever putting the binary itself in this JSON payload.
+    for (const s of STORES) { if (s === 'noteVersions') continue; data[s] = Cache[s]; }
+    // A trashed PDF's snapshot DOES carry its full blob (so it can be
+    // restored — see trashItem), unlike Cache.pdfs. That blob must never go
+    // into this JSON either, for the same reason: a Uint8Array serializes
+    // to JSON as one numbered key per byte, multiplying its size several
+    // times over and bloating every future sync regardless of relevance.
+    data.trash = (Cache.trash || []).map(t => {
+      if (t.type === 'pdfs' && t.data && t.data.blob) {
+        const { blob, ...meta } = t.data;
+        return { ...t, data: meta };
+      }
+      return t;
+    });
     data._exportedAt = nowISO();
     return data;
   },
@@ -3607,8 +3637,22 @@ const BackupService = {
     if (data.tombstones) for (const t of data.tombstones) await DB.put('tombstones', t);
     await DB.all('tombstones').then(t => { Cache.tombstones = t; });
     const tombstoneMap = new Map((Cache.tombstones || []).map(t => [t.itemStore + ':' + t.itemId, t.deletedAt]));
+    // A tombstone that just arrived might reference an item THIS device
+    // already holds from an earlier sync, made before the deletion happened
+    // on the other device — the loop below only guards against re-creating
+    // a tombstoned item, so without this pass a deletion would propagate as
+    // "can't come back" everywhere but never actually remove the stale
+    // local copy anyone already has.
     for (const s of STORES) {
-      if (s === 'pdfs' || s === 'noteVersions' || s === 'tombstones' || !data[s]) continue;
+      if (s === 'noteVersions' || s === 'tombstones') continue;
+      for (const item of (Cache[s] || [])) {
+        const deletedAt = tombstoneMap.get(s + ':' + item.id);
+        if (deletedAt && (!item.updatedAt || item.updatedAt <= deletedAt)) await DB.del(s, item.id);
+      }
+    }
+    let pdfsTouched = false;
+    for (const s of STORES) {
+      if (s === 'noteVersions' || s === 'tombstones' || !data[s]) continue;
       const localItems = new Map((Cache[s] || []).map(x => [x.id, x]));
       for (const obj of data[s]) {
         const deletedAt = tombstoneMap.get(s + ':' + obj.id);
@@ -3620,11 +3664,34 @@ const BackupService = {
         // deletion bug above, just for edits instead of removals.
         const local = localItems.get(obj.id);
         if (local && local.updatedAt && obj.updatedAt && local.updatedAt > obj.updatedAt) continue;
-        await DB.put(s, obj);
+        if (s === 'pdfs') {
+          // The incoming record is always metadata-only (Cache.pdfs never
+          // carries a blob). If we already hold this PDF's binary locally,
+          // preserve it — the same rule saveItem() applies for local edits.
+          // If we don't have it yet, it's put as-is (no blob) and the
+          // caller downloads the binary afterwards via its driveFileId.
+          const existingFull = (await DB.get('pdfs', obj.id)) || local;
+          const toPut = (!obj.blob && existingFull && existingFull.blob) ? { ...obj, blob: existingFull.blob } : obj;
+          await DB.put('pdfs', toPut);
+          pdfsTouched = true;
+        } else if (s === 'trash' && obj.type === 'pdfs' && obj.data && !obj.data.blob) {
+          // Same rule again, one layer deeper: a trashed PDF's own snapshot
+          // also carries a blob locally (so it can be restored), also
+          // stripped from the sync payload — an incoming metadata-only
+          // trash record for it must not wipe that either.
+          const existingTrash = local || await DB.get('trash', obj.id);
+          const toPut = (existingTrash && existingTrash.data && existingTrash.data.blob)
+            ? { ...obj, data: { ...obj.data, blob: existingTrash.data.blob } }
+            : obj;
+          await DB.put('trash', toPut);
+        } else {
+          await DB.put(s, obj);
+        }
       }
     }
     await loadAllToCache();
     if (!silent) { Tree.render(); Router.render(); }
+    return { pdfsTouched };
   },
   async exportJSON() {
     const data = this.buildBackupObject();
@@ -3732,16 +3799,35 @@ const BackupService = {
 };
 
 /* ============================== GOOGLE DRIVE SYNC ==============================
-   Saves your data (not the app files — the actual notes/questions/etc, the same
-   content as a JSON backup) to a file in your own Google Drive, using a
-   drive.file-scoped OAuth token. drive.file means this app can only ever see or
-   touch files it created itself — never the rest of your Drive.
+   Saves your data (not the app files — the actual notes/questions/etc, plus your
+   uploaded PDFs) into a folder in your own Google Drive, using a drive.file-scoped
+   OAuth token. drive.file means this app can only ever see or touch files it
+   created itself — never the rest of your Drive.
+   Everything except PDFs lives in one JSON file (castudy-backup.json) in that
+   folder. Each PDF is its own separate binary file there instead — the JSON only
+   holds a driveFileId pointing at it — because a single JSON blob isn't a sane
+   place for potentially-large binary content that changes far less often than
+   everything else. uploadPendingPdfBlobs()/downloadMissingPdfBlobs() below keep
+   those binary files and the JSON's driveFileId references in sync with each other.
    Requires a Google Cloud OAuth Client ID that you create yourself (see Settings
    for instructions) — Google requires the app be served over http(s), not
    opened as a local file, for sign-in to work at all. */
 const DriveSync = {
   tokenClient: null, accessToken: null, tokenExpiresAt: 0, connected: false, syncing: false, dirty: false, lastSyncError: null,
   DRIVE_FOLDER_NAME: 'CA Study', DRIVE_FILE_NAME: 'castudy-backup.json',
+
+  // Writes a sync-bookkeeping setting (last-synced time, folder/file IDs,
+  // connection flag) directly, without going through Settings.set() ->
+  // saveItem() -> markDirty(). Those four are DriveSync's OWN record-keeping
+  // about a sync that just happened, not user content — if they routed
+  // through the normal path, recording "I just finished syncing" would
+  // itself mark the app dirty again and immediately queue another sync,
+  // forever, even with nothing left to sync.
+  async _setSettingQuiet(key, value) {
+    await DB.put('settings', { id: key, value });
+    const i = Cache.settings.findIndex(s => s.id === key);
+    if (i >= 0) Cache.settings[i].value = value; else Cache.settings.push({ id: key, value });
+  },
 
   updateStatusBadge() {
     const el = document.getElementById('driveStatusBadge');
@@ -3815,7 +3901,7 @@ const DriveSync = {
     this.tokenExpiresAt = Date.now() + (resp.expires_in || 3500) * 1000;
     this.connected = true;
     this.lastSyncError = null;
-    Settings.set('googleWasConnected', true);
+    DriveSync._setSettingQuiet('googleWasConnected', true);
     this.updateStatusBadge();
     this.ensureFileId().then(() => this.syncNow(true)).then(() => { if (UI.route === 'settings') Router.render(); });
   },
@@ -3841,8 +3927,8 @@ const DriveSync = {
       google.accounts.oauth2.revoke(this.accessToken, () => {});
     }
     this.accessToken = null; this.tokenExpiresAt = 0; this.connected = false; this.lastSyncError = null;
-    Settings.set('googleWasConnected', false);
-    Settings.set('googleFolderId', '').then(() => Settings.set('googleFileId', ''));
+    DriveSync._setSettingQuiet('googleWasConnected', false);
+    DriveSync._setSettingQuiet('googleFolderId', '').then(() => DriveSync._setSettingQuiet('googleFileId', ''));
     toast('Disconnected from Google Drive');
     this.updateStatusBadge();
     Router.render();
@@ -3881,7 +3967,7 @@ const DriveSync = {
         });
         folderId = (await created.json()).id;
       }
-      await Settings.set('googleFolderId', folderId);
+      await DriveSync._setSettingQuiet('googleFolderId', folderId);
     }
     let fileId = Settings.get('googleFileId');
     if (!fileId) {
@@ -3896,7 +3982,7 @@ const DriveSync = {
         });
         fileId = (await created.json()).id;
       }
-      await Settings.set('googleFileId', fileId);
+      await DriveSync._setSettingQuiet('googleFileId', fileId);
     }
     return fileId;
   },
@@ -3913,20 +3999,30 @@ const DriveSync = {
       // silently erasing whatever the OTHER one had added that this one
       // doesn't know about. Merging first guarantees a sync can only ever
       // add data, never lose it, no matter which side syncs last.
+      let pdfsTouched = false;
       try {
         const res = await this.driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`);
         const remote = await res.json();
-        if (remote && typeof remote === 'object') await BackupService.mergeBackupObject(remote, true);
+        if (remote && typeof remote === 'object') {
+          const result = await BackupService.mergeBackupObject(remote, true);
+          pdfsTouched = !!result?.pdfsTouched;
+        }
       } catch (mergeErr) {
         console.warn('Pre-sync merge skipped (remote file may be empty or new)', mergeErr);
       }
+      // Fetch the binary for any PDF we now know about (just merged in from
+      // Drive) but don't actually hold locally — new device, reinstall, or
+      // a PDF someone else on this account added. Then push up the binary
+      // for any local PDF Drive doesn't have yet.
+      if (pdfsTouched) await this.downloadMissingPdfBlobs();
+      await this.uploadPendingPdfBlobs();
       const data = BackupService.buildBackupObject();
       await this.driveFetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data)
       });
       this.dirty = false;
       this.lastSyncError = null;
-      await Settings.set('googleLastSynced', nowISO());
+      await DriveSync._setSettingQuiet('googleLastSynced', nowISO());
       if (!silent) toast('Synced to Google Drive');
       if (UI.route === 'settings') Router.render();
     } catch (e) {
@@ -3943,10 +4039,75 @@ const DriveSync = {
       const res = await this.driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`);
       const data = await res.json();
       await BackupService.mergeBackupObject(data);
+      await this.downloadMissingPdfBlobs();
       toast('Restored from Google Drive');
     } catch (e) {
       console.warn('Drive restore failed', e);
       toast('Restore failed — ' + e.message);
+    }
+  },
+  // Uploads the binary for every local PDF that doesn't have a driveFileId
+  // yet — i.e. has never been pushed to Drive at all. A PDF's blob is
+  // immutable once created in this app (only its metadata changes later),
+  // so "already has a driveFileId" reliably means "already up to date".
+  async uploadPendingPdfBlobs() {
+    if (!Settings.get('googleFolderId')) await this.ensureFileId(); // populates it as a side effect
+    const folderId = Settings.get('googleFolderId');
+    for (const meta of (Cache.pdfs || [])) {
+      if (meta.driveFileId) continue;
+      const full = await DB.get('pdfs', meta.id);
+      if (!full || !full.blob) continue;
+      try {
+        const driveFileId = await this.uploadPdfBlob(full, folderId);
+        const updated = { ...full, driveFileId };
+        await DB.put('pdfs', updated);
+        const i = Cache.pdfs.findIndex(p => p.id === meta.id);
+        if (i >= 0) Cache.pdfs[i] = { ...meta, driveFileId };
+      } catch (e) {
+        console.warn('Failed to upload PDF to Drive:', full.title, e);
+      }
+    }
+  },
+  async uploadPdfBlob(pdfRecord, folderId) {
+    const boundary = 'castudy-' + uid();
+    const metadata = { name: (pdfRecord.filename || pdfRecord.title || pdfRecord.id) + '.pdf', mimeType: 'application/pdf' };
+    if (folderId) metadata.parents = [folderId];
+    const blobBytes = pdfRecord.blob instanceof Uint8Array ? pdfRecord.blob : new Uint8Array(pdfRecord.blob);
+    const enc = new TextEncoder();
+    const head = enc.encode(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n--${boundary}\r\nContent-Type: application/pdf\r\n\r\n`);
+    const tail = enc.encode(`\r\n--${boundary}--`);
+    const body = new Uint8Array(head.length + blobBytes.length + tail.length);
+    body.set(head, 0); body.set(blobBytes, head.length); body.set(tail, head.length + blobBytes.length);
+    const res = await this.driveFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', {
+      method: 'POST', headers: { 'Content-Type': `multipart/related; boundary=${boundary}` }, body
+    });
+    const json = await res.json();
+    if (!json.id) throw new Error('Drive did not return a file id for the uploaded PDF');
+    return json.id;
+  },
+  // Downloads the binary for every PDF we have metadata for (just merged in
+  // from a sync) but no actual content for yet — a PDF that exists on
+  // Drive/another device but not on this one.
+  async downloadMissingPdfBlobs() {
+    const candidates = (Cache.pdfs || []).filter(p => p.driveFileId);
+    let any = false;
+    for (const meta of candidates) {
+      const full = await DB.get('pdfs', meta.id);
+      if (full && full.blob) continue;
+      try {
+        const res = await this.driveFetch(`https://www.googleapis.com/drive/v3/files/${meta.driveFileId}?alt=media`);
+        const buf = await res.arrayBuffer();
+        const merged = { ...(full || meta), blob: new Uint8Array(buf) };
+        await DB.put('pdfs', merged);
+        any = true;
+      } catch (e) {
+        console.warn('Failed to download PDF from Drive:', meta.title, e);
+      }
+    }
+    if (any) {
+      const all = await DB.all('pdfs');
+      Cache.pdfs = all.map(({ blob, ...m }) => m);
+      if (UI.route === 'pdfs' || UI.route === 'pdf') Router.render();
     }
   }
 };
@@ -4491,7 +4652,7 @@ document.addEventListener('keydown', (e) => {
   if (mod && e.key.toLowerCase() === 'k') { e.preventDefault(); CmdK.open(); }
   else if (mod && e.key.toLowerCase() === 'n') { e.preventDefault(); Notes.promptNew(); }
   else if (mod && e.key.toLowerCase() === 'j') { e.preventDefault(); QuickCapture.open(); }
-  else if (e.key === 'Escape') { CmdK.close(); QuickCapture.close(); Modal.close(); if (Focus.active) Focus.exit(); }
+  else if (e.key === 'Escape') { CmdK.close(); QuickCapture.close(); Modal.close(); Pdfs.closeAllMarginNotes(); if (Focus.active) Focus.exit(); }
 });
 // The moment the tab is backgrounded, closed, or the OS is about to suspend
 // it, force any pending debounced note/title save to run right now instead
@@ -4504,6 +4665,12 @@ function flushPendingSaves() {
   try { Pdfs.onSplitEdit.flush(); } catch (e) { /* ignore */ }
 }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushPendingSaves(); });
+// A click anywhere outside an expanded margin note closes it — the note's
+// own click handler (and its Edit/Delete actions) stop propagation, so this
+// only ever fires for genuine clicks elsewhere on the page.
+document.addEventListener('click', (e) => {
+  if (document.querySelector('.pdf-margin-note.expanded') && !e.target.closest('.pdf-margin-note')) Pdfs.closeAllMarginNotes();
+});
 window.addEventListener('pagehide', flushPendingSaves);
 
 /* ============================== BOOT ============================== */
