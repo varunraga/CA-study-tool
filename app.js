@@ -2641,25 +2641,66 @@ const Pdfs = {
     const items = (Cache.annotations || []).filter(a => a.targetType === 'pdf' && a.pdfId === pdfId && a.page === pdfCurrentPage);
     items.forEach(a => {
       if (a.kind === 'sticky') {
-        const icon = document.createElement('div');
-        icon.className = 'pdf-sticky-icon';
-        icon.style.left = (a.x * pdfScale) + 'px'; icon.style.top = (a.y * pdfScale) + 'px';
-        icon.innerHTML = '<svg class="ico" style="color:#5B9BE0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="16.5" x2="15" y2="16.5"/></svg>'; icon.title = a.comment;
-        icon.onclick = (ev) => { ev.stopPropagation(); Pdfs.openSticky(a.id); };
-        overlay.appendChild(icon);
+        const expanded = Pdfs.expandedAnnotIds.has(a.id);
+        const wrap = document.createElement('div');
+        wrap.className = 'pdf-margin-note-wrap';
+        wrap.style.left = (a.x * pdfScale) + 'px'; wrap.style.top = (a.y * pdfScale) + 'px';
+        const iconHtml = '<div class="pdf-sticky-icon" title="Sticky note"><svg class="ico" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5"/></svg></div>';
+        const note = document.createElement('div');
+        note.className = 'pdf-margin-note pdf-margin-note-sticky' + (expanded ? ' expanded' : '');
+        note.innerHTML = Pdfs.marginNoteInner(a, expanded);
+        note.onclick = (ev) => { ev.stopPropagation(); Pdfs.toggleMarginNote(a.id); };
+        wrap.innerHTML = iconHtml;
+        wrap.appendChild(note);
+        overlay.appendChild(wrap);
       } else {
-        mergeLineRectsXYWH(a.rects).forEach(r => {
+        const rects = mergeLineRectsXYWH(a.rects);
+        rects.forEach(r => {
           const div = document.createElement('div');
           div.className = 'pdf-hl-rect' + (a.kind === 'underline' ? ' underline' : '');
           div.style.left = (r.x * pdfScale) + 'px'; div.style.top = (r.y * pdfScale) + 'px';
           div.style.width = (r.w * pdfScale) + 'px'; div.style.height = (r.h * pdfScale) + 'px';
           if (a.kind !== 'underline') div.style.background = a.color;
-          div.title = a.comment || a.text || '';
-          div.onclick = (ev) => { ev.stopPropagation(); Pdfs.openHighlight(a.id); };
+          div.title = a.kind !== 'underline' ? (a.comment || a.text || '') : '';
+          div.onclick = (ev) => { ev.stopPropagation(); (a.kind === 'underline' && a.comment) ? Pdfs.toggleMarginNote(a.id) : Pdfs.openHighlight(a.id); };
           overlay.appendChild(div);
         });
+        // The comment itself, written just above the first line it's
+        // attached to — like a note pencilled into a textbook's margin —
+        // instead of only being visible via a tooltip or a separate modal.
+        if (a.kind === 'underline' && a.comment && rects.length) {
+          const top = rects[0];
+          const expanded = Pdfs.expandedAnnotIds.has(a.id);
+          const note = document.createElement('div');
+          note.className = 'pdf-margin-note' + (expanded ? ' expanded' : '');
+          note.style.left = (top.x * pdfScale) + 'px';
+          note.style.top = (top.y * pdfScale - 2) + 'px';
+          note.innerHTML = Pdfs.marginNoteInner(a, expanded);
+          note.onclick = (ev) => { ev.stopPropagation(); Pdfs.toggleMarginNote(a.id); };
+          overlay.appendChild(note);
+        }
       }
     });
+  },
+  expandedAnnotIds: new Set(),
+  toggleMarginNote(id) {
+    if (Pdfs.expandedAnnotIds.has(id)) Pdfs.expandedAnnotIds.delete(id);
+    else Pdfs.expandedAnnotIds.add(id);
+    Pdfs.renderOverlay(pdfPageObj.getViewport({ scale: pdfScale }));
+  },
+  // Short comments show in full; longer ones truncate to a handful of words
+  // until clicked, at which point they expand right where they are (with
+  // quick Edit/Delete actions) rather than opening a separate dialog.
+  marginNoteInner(a, expanded) {
+    const comment = a.comment || '';
+    const words = comment.trim().split(/\s+/);
+    const preview = (comment.length > 28 || words.length > 4) ? words.slice(0, 4).join(' ') + '…' : comment;
+    if (!expanded) return esc(preview);
+    const openFn = a.kind === 'sticky' ? 'openSticky' : 'openHighlight';
+    return `<div>${esc(comment)}</div><div class="pdf-margin-note-actions">
+      <span onclick="event.stopPropagation();Pdfs.${openFn}('${a.id}')" title="Edit this note">Edit</span>
+      <span onclick="event.stopPropagation();Pdfs.quickDeleteAnnotation('${a.id}')" title="Delete this note">Delete</span>
+    </div>`;
   },
   refreshSidePanel() {
     if (pdfSplitMode) return; // notes panel is independent of per-page data; leave it alone
@@ -4440,7 +4481,10 @@ document.addEventListener('selectionchange', () => {
   if (!layer) return;
   const sel = window.getSelection();
   if (!sel || sel.isCollapsed || !sel.rangeCount || !layer.contains(sel.anchorNode)) { Pdfs.clearSelectionPreview(); return; }
-  requestAnimationFrame(() => Pdfs.renderSelectionPreview(sel.getRangeAt(0)));
+  requestAnimationFrame(() => {
+    if (!sel.rangeCount) return; // selection may have been cleared during the deferred frame
+    Pdfs.renderSelectionPreview(sel.getRangeAt(0));
+  });
 });
 document.addEventListener('keydown', (e) => {
   const mod = e.metaKey || e.ctrlKey;

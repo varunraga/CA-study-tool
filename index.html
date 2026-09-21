@@ -214,7 +214,29 @@ textarea{resize:vertical;}
 .pdf-hl-overlay{position:absolute;top:0;left:0;pointer-events:none;}
 .pdf-hl-rect{position:absolute;pointer-events:auto;cursor:pointer;border-radius:2px;mix-blend-mode:multiply;}
 .pdf-hl-rect.underline{background:none !important;border-bottom:3px solid var(--accent);border-radius:0;}
-.pdf-sticky-icon{position:absolute;width:22px;height:22px;background:var(--accent);color:var(--ink-on-accent);border-radius:50% 50% 50% 4px;display:flex;align-items:center;justify-content:center;font-size:11px;cursor:pointer;pointer-events:auto;transform:translate(-50%,-100%);box-shadow:0 2px 6px rgba(0,0,0,.35);}
+.pdf-sticky-icon{position:absolute;width:20px;height:20px;background:var(--accent);color:var(--ink-on-accent);border-radius:50% 50% 50% 4px;display:flex;align-items:center;justify-content:center;font-size:11px;cursor:pointer;pointer-events:auto;transform:translate(-50%,-100%);box-shadow:0 2px 6px rgba(0,0,0,.35);flex-shrink:0;}
+.pdf-sticky-icon svg{width:11px;height:11px;}
+.pdf-margin-note-wrap{position:absolute;display:flex;align-items:flex-end;gap:5px;z-index:6;pointer-events:none;}
+.pdf-margin-note-wrap>*{pointer-events:auto;}
+/* A note written just above its line, like a hand-added margin note in a
+   textbook — short ones sit fully visible on the page; long ones truncate to
+   a few words and grow in place (not a popup) when clicked. */
+.pdf-margin-note{
+  position:absolute; transform:translateY(-100%);
+  font-family:var(--serif); font-style:italic; font-size:12.5px; line-height:1.3;
+  color:var(--accent); max-width:230px; white-space:nowrap; overflow:hidden;
+  text-overflow:ellipsis; padding:1px 5px 2px; border-radius:4px; cursor:pointer;
+  z-index:6; transition:background .12s;
+}
+.pdf-margin-note:hover{background:rgba(217,178,76,.16);}
+.pdf-margin-note.expanded{
+  white-space:normal; overflow:visible; text-overflow:clip;
+  background:var(--bg-elev); border:1px solid rgba(217,178,76,.4); box-shadow:var(--shadow-card);
+  padding:8px 10px; max-width:270px; z-index:25; font-style:normal; font-size:13px; color:var(--text);
+}
+.pdf-margin-note-sticky{position:static;transform:none;}
+.pdf-margin-note-actions{display:flex;gap:12px;margin-top:7px;font-family:var(--sans);font-size:11.5px;font-style:normal;}
+.pdf-margin-note-actions span{color:var(--accent);cursor:pointer;text-decoration:underline;text-underline-offset:2px;}
 .icon-btn.active-toggle{background:var(--accent);color:var(--ink-on-accent);}
 .pdf-ink-canvas{position:absolute;top:0;left:0;pointer-events:none;}
 #pdfInkCanvas{background:transparent !important;box-shadow:none !important;}
