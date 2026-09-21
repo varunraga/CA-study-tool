@@ -1958,7 +1958,7 @@ const Pdfs = {
         <div class="pdf-canvas-wrap" id="pdfCanvasWrap">
           <div class="pdf-page-wrap" id="pdfPageWrap" onclick="Pdfs.handlePageClick(event)" title="Select text to highlight/underline, or click to place a sticky note when Sticky Note mode is on">
             <canvas id="pdfCanvas"></canvas>
-            <div class="pdf-textlayer" id="pdfTextLayer" onmouseup="Pdfs.onTextSelect(event)"></div>
+            <div class="pdf-textlayer" id="pdfTextLayer" onmouseup="Pdfs.onTextSelect(event)" ontouchend="Pdfs.onTextSelect(event)"></div>
             <div class="pdf-hl-overlay" id="pdfHlOverlay"></div>
             <div class="pdf-selection-preview" id="pdfSelectionPreview"></div>
             <canvas class="pdf-ink-canvas" id="pdfInkCanvas"
@@ -2093,23 +2093,40 @@ const Pdfs = {
 
   /* ---- highlight / underline (selection-driven) ---- */
   onTextSelect(e) {
-    document.getElementById('pdfSelToolbar')?.remove();
-    if (pdfStickyMode) return;
+    // Desktop mouseup path — fires immediately, no perceptible delay.
+    if (pdfStickyMode) { document.getElementById('pdfSelToolbar')?.remove(); return; }
     const sel = window.getSelection();
-    if (!sel || sel.isCollapsed || !sel.toString().trim()) { Pdfs.clearSelectionPreview(); return; }
+    if (!sel || sel.isCollapsed || !sel.toString().trim()) { Pdfs.clearSelectionPreview(); document.getElementById('pdfSelToolbar')?.remove(); return; }
     const layer = document.getElementById('pdfTextLayer');
     if (!layer || !layer.contains(sel.anchorNode)) return;
-    const range = sel.getRangeAt(0);
+    Pdfs.showSelectionToolbar(sel.getRangeAt(0));
+  },
+  // Builds and shows the highlight/underline/comment toolbar for the CURRENT
+  // selection, and — critically — captures its text+rects right now rather
+  // than leaving saveHighlight()/annotateSelection() to re-read
+  // window.getSelection() later when a button is actually tapped. On mobile,
+  // tapping a toolbar button is a new touch elsewhere on the screen, and by
+  // default that's exactly the gesture that makes the OS clear the current
+  // text selection — sometimes before this app's own tap handler even runs.
+  // Capturing everything up front means the buttons work off data that
+  // can't be pulled out from under them.
+  showSelectionToolbar(range) {
+    const text = (window.getSelection()?.toString() || '');
+    const rects = Pdfs.computeRectsFromRange(range);
+    if (!rects.length) return;
+    Pdfs._pendingSelection = { text, rects };
     Pdfs.renderSelectionPreview(range);
+    document.getElementById('pdfSelToolbar')?.remove();
     const rect = range.getBoundingClientRect();
     const colors = Settings.get('highlightColors');
     const bar = document.createElement('div');
     bar.id = 'pdfSelToolbar'; bar.className = 'sel-toolbar';
-    bar.style.top = (rect.top + window.scrollY - 40) + 'px';
-    bar.style.left = (rect.left + window.scrollX) + 'px';
-    bar.innerHTML = colors.map((c, i) => `<button title="${esc(c.label)}" onmousedown="event.preventDefault();Pdfs.saveHighlight('${c.color}','${c.key}')">${['🟡', '🟢', '🔵', '🔴', '🟣', '🟠'][i] || '●'}</button>`).join('')
-      + `<button title="Underline" onmousedown="event.preventDefault();Pdfs.saveHighlight('','underline')">U̲</button>`
-      + `<button title="Add a comment/annotation to this selection" onmousedown="event.preventDefault();Pdfs.annotateSelection()"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5.5h16v11H9l-4 3.5v-3.5H4z"/></svg></button>`;
+    bar.style.top = Math.max(4, rect.top - 44) + 'px'; // position:fixed is viewport-relative already — adding scrollY here double-counted scroll
+    bar.style.left = rect.left + 'px';
+    const act = (js) => `onmousedown="event.preventDefault();${js}" ontouchstart="event.preventDefault();${js}"`;
+    bar.innerHTML = colors.map((c) => `<button class="sel-swatch" style="background:${c.color}" title="${esc(c.label)}" ${act(`Pdfs.saveHighlight('${c.color}','${c.key}')`)}></button>`).join('')
+      + `<button title="Underline" ${act("Pdfs.saveHighlight('','underline')")}>U̲</button>`
+      + `<button title="Add a comment/annotation to this selection" ${act('Pdfs.annotateSelection()')}><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5.5h16v11H9l-4 3.5v-3.5H4z"/></svg></button>`;
     document.body.appendChild(bar);
   },
   renderSelectionPreview(range) {
@@ -2137,15 +2154,13 @@ const Pdfs = {
     if (Pdfs._savingHighlight) return; // re-entrancy guard
     Pdfs._savingHighlight = true;
     try {
-      const sel = window.getSelection();
-      if (!sel.rangeCount) return;
-      const range = sel.getRangeAt(0);
-      const text = sel.toString();
-      const rects = Pdfs.computeRectsFromRange(range);
-      sel.removeAllRanges();
+      const pending = Pdfs._pendingSelection;
+      window.getSelection()?.removeAllRanges();
       document.getElementById('pdfSelToolbar')?.remove();
       Pdfs.clearSelectionPreview();
-      if (!rects.length) return;
+      Pdfs._pendingSelection = null;
+      if (!pending || !pending.rects.length) return;
+      const { text, rects } = pending;
       const targetKind = kind === 'underline' ? 'underline' : 'highlight';
       const targetColor = kind === 'underline' ? '' : color;
       // Duplicate guard: if an essentially identical annotation already
@@ -2172,32 +2187,29 @@ const Pdfs = {
 
   /* ---- comment annotations on selected PDF text (distinct from a color highlight) ---- */
   annotateSelection() {
-    const sel = window.getSelection();
-    if (!sel.rangeCount) return;
-    const range = sel.getRangeAt(0).cloneRange(); // capture now — the dialog can clear the live selection
-    const text = sel.toString();
-    sel.removeAllRanges();
+    const pending = Pdfs._pendingSelection;
+    window.getSelection()?.removeAllRanges();
     document.getElementById('pdfSelToolbar')?.remove();
     Pdfs.clearSelectionPreview();
+    Pdfs._pendingSelection = null;
+    if (!pending || !pending.rects.length) return;
     Modal.open('PDF Annotation', `
       <label>Comment / doubt / exam tip</label>
       <textarea id="mPdfAnnotComment" rows="3" placeholder="What do you want to remember about this?" title="Annotation text"></textarea>
       <div class="modal-actions"><button class="btn secondary" onclick="Modal.close()" title="Discard and close this dialog">Cancel</button>
       <button class="btn" onclick="Pdfs.saveAnnotationComment()" title="Save this annotation">Save</button></div>`);
-    Pdfs._pendingAnnotRange = range;
-    Pdfs._pendingAnnotText = text;
+    Pdfs._pendingAnnotRects = pending.rects;
+    Pdfs._pendingAnnotText = pending.text;
     setTimeout(() => document.getElementById('mPdfAnnotComment')?.focus(), 50);
   },
   async saveAnnotationComment() {
     const comment = document.getElementById('mPdfAnnotComment').value.trim();
     Modal.close();
     if (!comment) return;
-    const range = Pdfs._pendingAnnotRange;
+    const rects = Pdfs._pendingAnnotRects;
     const text = Pdfs._pendingAnnotText || '';
-    Pdfs._pendingAnnotRange = null; Pdfs._pendingAnnotText = null;
-    if (!range) return;
-    const rects = Pdfs.computeRectsFromRange(range);
-    if (!rects.length) return;
+    Pdfs._pendingAnnotRects = null; Pdfs._pendingAnnotText = null;
+    if (!rects || !rects.length) return;
     const saved = await saveItem('annotations', {
       id: uid(), targetType: 'pdf', pdfId: UI.params.id, page: pdfCurrentPage,
       kind: 'underline', color: '', rects, text: text.slice(0, 140), comment, createdAt: nowISO()
@@ -4636,16 +4648,35 @@ const Focus = {
 /* Keeps the PDF selection preview in sync WHILE dragging (selectionchange
    fires continuously during a drag, not just once on mouseup), so the clean
    merged-word preview tracks the selection live rather than only appearing
-   after you let go of the mouse. Cheap no-op outside the PDF viewer. */
+   after you let go of the mouse. Cheap no-op outside the PDF viewer.
+   It also drives the highlight/annotate toolbar on mobile/iPad: long-press
+   text selection there is finished by dragging native OS selection handles,
+   which doesn't reliably fire a mouseup (or any single "you're done" event)
+   on the underlying element the way a desktop mouse-drag does. selectionchange
+   is the one signal that's reliable everywhere, so once it stops firing for a
+   moment — the selection has settled — the toolbar shows itself. */
+let _pdfSelToolbarDebounce;
 document.addEventListener('selectionchange', () => {
   const layer = document.getElementById('pdfTextLayer');
   if (!layer) return;
   const sel = window.getSelection();
-  if (!sel || sel.isCollapsed || !sel.rangeCount || !layer.contains(sel.anchorNode)) { Pdfs.clearSelectionPreview(); return; }
+  if (!sel || sel.isCollapsed || !sel.rangeCount || !layer.contains(sel.anchorNode)) {
+    Pdfs.clearSelectionPreview();
+    clearTimeout(_pdfSelToolbarDebounce);
+    return;
+  }
   requestAnimationFrame(() => {
     if (!sel.rangeCount) return; // selection may have been cleared during the deferred frame
     Pdfs.renderSelectionPreview(sel.getRangeAt(0));
   });
+  if (pdfStickyMode) return;
+  clearTimeout(_pdfSelToolbarDebounce);
+  _pdfSelToolbarDebounce = setTimeout(() => {
+    const s = window.getSelection();
+    const l = document.getElementById('pdfTextLayer');
+    if (!s || s.isCollapsed || !s.rangeCount || !l || !l.contains(s.anchorNode)) return;
+    Pdfs.showSelectionToolbar(s.getRangeAt(0));
+  }, 400);
 });
 document.addEventListener('keydown', (e) => {
   const mod = e.metaKey || e.ctrlKey;

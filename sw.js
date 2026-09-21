@@ -9,7 +9,7 @@
 // instead, since waiting on the network for a file that hasn't changed in
 // months just adds latency for no benefit. Bump CACHE_NAME whenever you
 // deploy a new version so old caches get cleared out automatically.
-const CACHE_NAME = 'castudy-cache-v31';
+const CACHE_NAME = 'castudy-cache-v32';
 const APP_SHELL = [
   './',
   './index.html',
