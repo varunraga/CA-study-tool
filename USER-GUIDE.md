@@ -10,7 +10,7 @@ Open `index.html` in a browser (double-click it, or host the folder on a static 
 
 **Everything autosaves.** There is no "Save" button anywhere in the app, because you don't need one:
 
-- **Notes** save automatically ~600ms after you stop typing. Look at the bottom of the editor — it says "Saving…" then "Saved · [time]" once it's done.
+- **Notes** save automatically ~600ms after you stop typing. Look at the bottom of the editor — it says "Saving…" then "Saved · [time]" once it's done. If you switch away, close the tab, or the app gets backgrounded before that 600ms is up, whatever you just typed still saves immediately at that moment — this used to be a real gap (a few hundred milliseconds of edits could be lost on mobile in particular, since backgrounded tabs can be suspended with no further warning), and it's fixed.
 - **Every other thing you create** (a mnemonic, a question, a highlight, a bookmark, a timer session) saves the instant you confirm it — there's no separate save step.
 - All of this is written to **IndexedDB**, a real database built into your browser, not just memory. Close the tab, restart your computer, come back next week — it's all still there.
 - The only thing that *doesn't* survive is if you clear your browser's site data for this page, or open it in a private/incognito window and then close it. For anything you can't afford to lose, use **Settings → Export backup** regularly (see §14).
@@ -59,8 +59,12 @@ You'll be asked for a title and which topic it belongs to, then dropped straight
 `↶ Undo` `↷ Redo` — in addition to the standard Ctrl/Cmd+Z keyboard shortcut, these are explicit buttons so undo/redo is always one click away, no keyboard required
 `H2` `H3` `¶` — heading, sub-heading, plain paragraph
 `• List` `1. List` `❝ Quote` `―` — bullet list, numbered list, quote block, horizontal divider
+`☑ Checklist` — inserts a checkbox + text item; click the checkbox to check it off (text gets a strikethrough) — click the button again for more items
 `▦ Table` `🔗 Link` — insert a table, turn selected text into a link
+`📋 Template` — one-click starting structures for formats you'll actually reuse: a Case Law Summary (citation/facts/issue/holding/ratio), an Amendment Tracker (before/after table), or a Rates/Thresholds Table — inserted at your cursor, so you can drop a second one in later without losing the first
 `🕶 Focus` — hide the sidebar, top bar, *and* the note's own inspector panel, so the writing area expands to fill the space (press **Esc** to exit)
+
+**Pasting images**: paste a screenshot, diagram, or photo directly into a note (Ctrl/Cmd+V after copying an image) — it's automatically resized to a reasonable width and compressed before embedding, so a big phone photo doesn't bloat the note's storage.
 
 The same color/superscript/undo/redo toolbar is also available in the PDF "Split with Notes" editor (§10) — it's a real rich-text editor too, not just a plain text box. It's **not** available on PDF sticky notes or text annotations, which are simple one-line text prompts by design.
 
@@ -109,6 +113,10 @@ In the Questions list, MCQ/True-False/Fill-in-the-Blank are answered directly an
 
 **Every Mnemonic and Question you create automatically gets a linked flashcard** — you don't do anything extra for this; it's how they get pulled into spaced-repetition revision (§8).
 
+**Working on several at once**: on the Questions page, and on a topic's Notes list, click **"Select"** to turn on checkboxes. Pick several, then **move them all to a different topic, tag them all at once** (notes only), or **delete them all** — one action instead of repeating it one at a time. Click "Select" again (or finish the action) to exit.
+
+**Compact vs. comfortable views**: on the Questions page and the PDF Library, a density toggle switches between the full card layout and a denser list that fits more on screen — useful once either list gets long. Your choice is remembered.
+
 ---
 
 ## 6. Note version history
@@ -116,6 +124,14 @@ In the Questions list, MCQ/True-False/Fill-in-the-Blank are answered directly an
 The app quietly snapshots a note roughly every 3 minutes while you're actively editing it. To use this:
 1. Open a note → in the right panel, under "Export & history", click **"🕘 Version history"**.
 2. You'll see a list of past versions with a timestamp. **Preview** shows you that version's content without touching your current note. **Restore** replaces your current content with that version — but first it automatically snapshots what you currently have, so nothing is ever lost even if you restore by mistake.
+
+---
+
+## 6a. Quick Capture & Inbox
+
+For a stray thought mid-PDF-read that doesn't belong to a specific topic yet — press **Ctrl/Cmd+J** from anywhere in the app for a small floating box, type it, and it's saved instantly. No need to stop what you're doing to pick a topic first.
+
+Everything you jot down this way lands in **sidebar → Inbox**, with a badge showing how many are waiting. From there, click **"File into topic"** on any capture to turn it into a real note (the title is pre-filled from what you typed, just pick a topic), or **Discard** it if it turned out not to matter. Filed captures disappear from the Inbox; discarded ones are gone for good — this isn't a Trash-style safety net, so only discard what you're sure about.
 
 ---
 
@@ -129,64 +145,69 @@ The app quietly snapshots a note roughly every 3 minutes while you're actively e
 
 ---
 
-## 8. Revision (spaced repetition)
+## 8. Revision (spaced repetition), Cloze Review, and Quiz Me
 
 The **Revision** section (sidebar, with a badge showing how many are due) is where notes and flashcards you've studied before come back to you on a schedule.
 
 - **Notes**: rate yourself Again/Good/Easy from inside the note (right panel → "Revision"). This is the *only* way a note enters the revision queue — a brand-new note won't nag you until you've rated it once.
-- **Flashcards** (from Questions and Mnemonics): these *do* show up immediately the first time, since there's no separate "note page" to rate them from first.
-- Click **"▶ Start Revision Session"** on the Revision page to go through everything due, one card at a time, front-then-flip-to-answer, rating each Again/Hard/Good/Easy.
+- **Flashcards** (from Questions and Mnemonics, or created manually — see below): these *do* show up immediately the first time, since there's no separate "note page" to rate them from first.
+- Click **"Start Revision Session"** on the Revision page to go through everything due, one card at a time, front-then-flip-to-answer, rating each Again/Hard/Good/Easy.
+- **Mixed across subjects, not blocked by one**: a session interleaves items from different subjects instead of running through one subject's due items in a block before moving to the next — mixing subjects during practice is more effective for retention than studying one at a time. Last-Minute Revision Mode (§9) does the same.
 - The interval schedule (how many days until the next review) is configurable in **Settings** — defaults to 1, 3, 7, 14, 30 days, getting easier or harder based on how you rate each card.
+
+**Manual flashcards**: not every fact fits neatly under a mnemonic or a question. Click **"+ Flashcard"** on any topic page to create a standalone flashcard directly — it joins the same revision queue as everything else.
+
+**Cloze Review** — turning your own highlights into recall practice: open any note that has highlighted text and click **"Cloze Review"**. Each highlight becomes a fill-in-the-blank card: the sentence it's in, with that word blanked out (any other highlights in the same sentence are shown as plain text, so they don't give the answer away). Reading a highlight is recognition; being asked to recall the blanked word is retrieval, which sticks much better. Click through, mark yourself right or wrong, see your score at the end.
+
+**Quiz Me** — a mixed self-test for one topic: click **"Quiz me"** on any topic page to get a shuffled session pulling together that topic's mnemonics and questions, plus jargon terms from the same subject, all in one flip-card session with a score at the end. Good for a quick "do I actually know this topic" check without setting up a full revision session.
 
 ---
 
 ## 9. Exam Mode & Last-Minute Revision Mode
 
-**Exam Mode** (sidebar): pick a subject and/or difficulty, set minutes-per-mark (how much time per question), and start. Each question gets its own countdown timer. MCQ/True-False/Fill-in-the-Blank are answered with the real input and graded automatically the instant you submit; free-text questions show your answer next to the model answer and you self-grade. Ends with a summary of everything attempted.
+**Exam Mode** (sidebar): pick a subject and/or difficulty, set minutes-per-mark (how much time per question), and start. Each question gets its own countdown timer. MCQ/True-False/Fill-in-the-Blank are answered with the real input and graded automatically the instant you submit; free-text questions show your answer next to the model answer and you self-grade — and while you write, a live word count and rough page estimate (~100 words per handwritten page) sits under the box, since writing a full descriptive answer under time pressure is its own skill worth practicing. Ends with a summary of everything attempted.
 
-**Last-Minute Revision Mode** (sidebar): pick a subject (or "All"), and it streams through *only* your highest-priority material, one item at a time — ★4–5 notes, exam-important notes, anything marked "difficult," must-memorize jargons, hard questions, and favorited mnemonics. Use **Next/Prev** to move through it. This is meant for the night before an exam, not day-to-day study.
+**Last-Minute Revision Mode** (sidebar): pick a subject (or "All"), and it streams through *only* your highest-priority material, one item at a time — ★4–5 notes, exam-important notes, anything marked "difficult," must-memorize jargons, hard questions, and favorited mnemonics — mixed across subjects the same way Revision is (§8). Use Next/Prev to move through it. This is meant for the night before an exam, not day-to-day study.
 
 ---
 
 ## 10. PDFs — in your topics, and in the PDF Library
 
-**Two ways to upload**: click **"+ Import PDF"** either from **sidebar → PDF Library**, or — new — right from inside a **Topic page** (§2 above), which pre-fills that topic (and its chapter and subject) for you. Either way, you'll be asked for a title and, optionally, a **subject → chapter → topic** (each dropdown narrows the next one down). Tagging it all the way to a topic means the PDF shows up right there on that topic's page, alongside its notes — not just in the separate library. Tagging is optional at every level; an untagged PDF just lives in the library.
+**Two ways to upload**: click **"+ Import PDF"** either from **sidebar → PDF Library**, or right from inside a **Topic page** (§2 above), which pre-fills that topic (and its chapter and subject) for you. Either way, you'll be asked for a title and, optionally, a **subject → chapter → topic** (each dropdown narrows the next one down). Tagging it all the way to a topic means the PDF shows up right there on that topic's page, alongside its notes — not just in the separate library. Tagging is optional at every level; an untagged PDF just lives in the library.
 
 **Reading**: click any PDF (from its topic, or from the Library) to open the viewer. Prev/Next page, zoom in/out (−/+), and the page counter are in the toolbar. A breadcrumb at the top lets you jump straight back to its subject.
 
-**True full-screen by default**: opening a PDF automatically hides both the sidebar and the top bar, giving it the entire browser window for a genuinely full-screen reading view — you don't need to turn this on, it's just how PDFs open now. Click the **☰** button next to the breadcrumb if you want to peek at the sidebar without leaving the PDF (e.g. to check something in Revision or jump elsewhere); it stays open across page turns until you click ☰ again. Leaving the PDF (breadcrumb, sidebar, or any navigation) automatically restores the normal layout. On mobile, the top bar stays visible — it's the only way to reach the hamburger menu there, which already handles sidebar access the same way it always has.
+**True full-screen by default**: opening a PDF automatically hides both the sidebar and the top bar, giving it the entire browser window for a genuinely full-screen reading view — you don't need to turn this on, it's just how PDFs open now. Click the **☰** button next to the breadcrumb if you want to peek at the sidebar without leaving the PDF; it stays open across page turns until you click it again. Leaving the PDF automatically restores the normal layout.
 
-**Two PDF views, one click apart** — **"⛶ Full Screen"** in the toolbar switches between them:
-- **Editor view** (default): everything — draw, sticky notes, split-with-notes, export, undo/redo, bookmark, and the right-hand panel (highlight legend, this page's marks, bookmarked pages).
-- **Full Screen / reading view**: click "⛶ Full Screen" and the toolbar strips down to just Prev/Next and zoom, the side panel disappears, and the page widens to use that freed-up space — a genuinely minimal, distraction-free layout for straightforward reading. You can still select text and highlight/underline it here — that's not treated as an "extra" tool, just core reading. Click **"⛶ Exit Full Screen"** to go straight back to the full editor, exactly as it was. If you had Draw, Split with Notes, or Sticky Note mode active when you switch to reading view, it turns itself off automatically (their buttons disappear along with everything else).
+**Two PDF views, one click apart** — the **Full Screen** toggle in the toolbar switches between them:
+- **Editor view** (default): everything — draw, sticky notes, split-with-notes, export, undo/redo, bookmark, extract/merge, in-PDF search, and the right-hand panel (highlight legend, this page's marks, bookmarked pages).
+- **Reading view**: the toolbar strips down to just Prev/Next, zoom, and Find, the side panel disappears, and the page widens to use the freed-up space. You can still select text and highlight/underline it here — that's core reading, not an "extra." If Draw, Split with Notes, or Sticky Note mode was active, it turns itself off automatically when you switch.
 
-**If a highlight or selection ever looks off**: two specific bugs were found and fixed — highlighting the same text twice in a row no longer creates an invisible duplicate on top of the first one (which is what made deleting a highlight sometimes look like it did nothing, or removed the wrong thing — it was actually removing one of two identical copies), and selecting just a few words no longer balloons into highlighting the whole line on PDFs whose text is laid out differently internally.
+**Highlighting text on a PDF**: select text on the page exactly like you would in a note — a floating toolbar appears with 6 real color swatches (matching your actual configured highlight colors, not a fixed set), an underline option, and a comment button. These are stored as a separate layer keyed to the page, so **your original PDF file is never modified**, and everything re-scales correctly at any zoom level.
 
-**Highlighting text on a PDF**: select text on the page exactly like you would in a note — a floating toolbar appears with the 6 highlight colors, an underline option, and **💬** for a comment annotation. These are stored as a separate layer keyed to the page, so **your original PDF file is never modified**, and the highlight re-scales correctly no matter what zoom level you're at. Highlighting snaps to whole words, so dragging across multiple lines gives one clean band per line rather than clipping the last word short — and what you see while you're still dragging now matches exactly what gets saved, rather than the rougher native selection look it used to have. A **highlight legend** at the top of the right-hand panel always shows what each color means — the same legend used in notes.
+**Notes written right on the page**: when you add a comment to selected text, it doesn't just sit in a side panel — it appears as a small handwritten-style note in red, directly above the line it's attached to, like a note pencilled into a textbook's margin. Short comments show in full; longer ones truncate to a few words and **expand right in place when you tap them** — no popup, no navigating away. Tap Edit or Delete right there in the expanded note, press **Esc**, or tap anywhere else on the page to close it again. Sticky notes (below) get the same treatment: a small pin plus its text, right on the page.
 
-**Adding a comment to selected text**: click **💬** in that same floating toolbar (next to the highlight colors) and a small dialog opens for your comment — it saves as an underlined mark with your note attached, visually distinct from a plain color highlight, so you can tell "I highlighted this" apart from "I have a note about this" at a glance.
+**Sticky notes on a PDF**: click **Sticky note** in the toolbar (it highlights to show it's armed), then tap anywhere on the page — you'll be prompted for the note text, and it appears right there, same as a margin note.
 
-**Deleting a highlight, underline, or sticky note**: click the small **✕** next to it in the "This page" panel — one click, with a quick confirmation, no need to open anything first. (Clicking the mark itself, or its panel entry's text, still opens it to view or edit a note/comment on it, if it has one.)
+**Drawing on a PDF**: click **Draw** in the toolbar to open the drawing tools — Pen (freehand), Arrow, or Rect, plus 5 color dots. Draw with your mouse or finger directly on the page. "Clear page" removes everything drawn on the current page (asks to confirm). Every drawing is listed in the "This page" panel too. Drawings are stored separately from the PDF and re-scale correctly at any zoom. Click "Done" to exit drawing mode.
 
-**Sticky notes on a PDF**: click **"📌 Sticky note"** in the toolbar (it highlights to show it's armed), then click anywhere on the page — you'll be prompted for the note text, and a small icon appears at that spot. Click the icon any time to read, edit, or delete it. This one stays available in the minimal Full Screen reading view too, same as highlighting — it's treated as core reading functionality, not an editing extra that gets hidden.
+**Undo / Redo**: covers every kind of mark on a page — highlights, underlines, sticky notes, drawings — including deletions (delete a highlight, hit Undo, it's back).
 
-**Drawing on a PDF**: click **"✏ Draw"** in the toolbar to open the drawing tools — **Pen** (freehand), **Arrow**, or **Rect** (rectangle), plus 5 color dots to pick from. Draw with your mouse or finger directly on the page. **🗑 Clear page** removes everything you've drawn on the current page (asks to confirm). Every drawing is listed in the "This page" panel too — click one there to delete it. Like highlights, drawings are stored separately from the PDF itself and re-scale correctly no matter what zoom level you're at. Click **Done** (or the Draw button again) to exit drawing mode and go back to normal text selection/highlighting.
+**Finding text in a PDF**: click **Find** in the toolbar to search every page of the current PDF at once — not just the one you're on. Jump straight to the first match, then step through others with the arrows.
 
-**Undo / Redo for anything on the PDF**: the **↶ Undo** / **↷ Redo** buttons in the main PDF toolbar (not just the drawing tools) cover every kind of mark you can make on a page — highlights, underlines, sticky notes, and drawings. Undo steps back through your last actions one at a time (including deletions — deleting a highlight, then hitting Undo, brings it back); Redo re-applies whatever you just undid. Both are disabled (grayed out) when there's nothing to undo or redo.
+**Splitting and merging PDFs**: click **"Extract Pages"** in the viewer toolbar to pull a page range out of the current PDF into a brand-new PDF in your library — handy for splitting one huge combined study-material file into per-chapter files that map to your topic structure. From the PDF Library page, **"Merge PDFs"** combines two existing PDFs into one new one, pages from the first followed by the second. Both create a new library entry; your originals are never touched.
 
-**Exporting an annotated copy**: click **"⬇ Export PDF"** in the toolbar to download a copy of the PDF with every highlight, underline, and drawing permanently burned into the pages — a real PDF you can open in any reader, print, or share, with your original text still selectable (it's not a flattened screenshot). Your PDF in the library is never modified — this only produces a separate downloaded copy. If there's nothing marked on the PDF yet, it'll tell you there's nothing to export rather than downloading an unmarked copy.
+**Exporting an annotated copy**: click **"Export PDF"** to download a copy with every highlight, underline, and drawing permanently burned into the pages — a real PDF you can open anywhere, with text still selectable. Your library copy is never modified.
 
-**Page bookmarks**: click **"🔖 Bookmark page"** to save your current page for quick return. All of a PDF's highlights, sticky notes, and bookmarks for the *current page* are listed in the right-hand panel; click any entry to jump to it or manage it.
+**Page bookmarks**: click **"Bookmark page"** to save your current page for quick return. All of a PDF's highlights, sticky notes, and bookmarks for the *current page* are listed in the right-hand panel.
 
-**"Split with Notes"**: click this toolbar button to dock a note editor right beside the PDF, so you can take notes while reading without losing your page or zoom level. Pick an existing note (filtered to the PDF's subject) or create a new one on the spot. Toggle it off to get the bookmarks/highlights panel back.
-
-*Not yet supported*: freehand drawing/shapes on a PDF page. Highlighting, underlining, and sticky notes are real; drawing arbitrary ink is a separate feature that isn't built.
+**"Split with Notes"**: docks a note editor right beside the PDF, so you can take notes while reading without losing your page or zoom level.
 
 ---
 
 ## 11. Bookmarks
 
-Any note or PDF can be bookmarked (look for the "🔖 Bookmark" button on the note page, or bookmark a PDF page as above). All your bookmarks live under **sidebar → Bookmarks**, click any to jump straight there.
+Any note or PDF can be bookmarked (look for the Bookmark button on the note page, or bookmark a PDF page as above). All your bookmarks live under **sidebar → Bookmarks**, click any to jump straight there.
 
 ---
 
@@ -208,6 +229,8 @@ Sidebar → Analytics. This doesn't need any separate setup — it's entirely bu
 - **Streaks**: current and longest consecutive-day streaks, based on any day you either logged a Study Timer session or rated a note/flashcard during revision. A **30-day heatmap** shows which of the last 30 days had activity (filled square) or didn't.
 - **Weak topics**: topics ranked by how many notes you've marked "difficult" plus how many questions in that topic you got wrong — the more of both, the higher it ranks. Click any topic card to jump straight to it.
 - **Strong topics**: the mirror image — ranked by mastered notes plus correctly-answered questions.
+- **Accuracy by difficulty**: a bar for Easy/Medium/Hard showing what % of attempted questions at that level you got right.
+- **Time by subject**: a donut chart of Study Timer minutes per subject — only fills in once you start tagging a subject when you use the timer (§16), since a session doesn't have to be tagged to count.
 - **Subject breakdown**: for each subject, what % of its notes are "mastered" and what % of attempted questions you got correct.
 
 Since this relies on your Note status (learning/familiar/moderate/difficult/mastered) and Question status (correct/incorrect), the more consistently you keep those updated as you actually study, the more useful this page gets.
@@ -224,19 +247,21 @@ Sidebar → Trash. Anything deleted (a note, mnemonic, jargon, question, or PDF,
 
 Sidebar → Settings:
 
-- **Theme**: dark (the default) or light — also toggleable instantly from the 🌓 icon in the top bar.
+- **Theme**: dark (the default), light, or sepia — a warm-paper option made for long PDF reading sessions, easier on the eyes than pure dark or pure white over hours. Toggle dark/light instantly from the 🌓 icon in the top bar; pick sepia from this dropdown.
 - **Revision intervals**: the spaced-repetition day-gaps (default `1, 3, 7, 14, 30`) — edit as a comma-separated list.
 - **Backup & Restore**:
   - **⬇ Export backup (.json)** downloads everything — notes, subjects, questions, mnemonics, jargons, revision data, settings, annotations, bookmarks. Do this regularly; it's your safety net.
   - **⬆ Restore from backup** merges a previously exported JSON file back in.
-  - Note: PDFs themselves aren't included in the JSON (they're large binary files) — export a PDF individually if you need a copy of it outside the browser.
+  - Note: PDFs themselves aren't included in this JSON file (they're large binary files, and one huge file isn't a great single-download format) — export a PDF individually from its viewer if you need a copy outside the browser. **Google Drive Sync, below, is different — it does carry your PDFs.**
 - **Readable Exports**: unlike the JSON backup (meant for restoring back into this app), these are plain Markdown files meant for reading, printing, or sharing:
   - **⬇ All notes (Markdown)** — every note in one file, organized by subject then chapter.
   - **⬇ All highlights & annotations (Markdown)** — every note highlight and comment, every PDF highlight/underline/sticky note, and a count of drawings per PDF, grouped by type in one file.
-- **Google Drive Sync**: an alternative (or addition) to manual export/import — keeps your data automatically backed up to your own Google Drive. A Client ID is already built in, so just click **Connect Google Drive** and approve the one-time consent screen (that single click is unavoidable — Google requires it). After that, it stays connected automatically on every future visit and syncs near-real-time: any change pushes within seconds, with light throttling during rapid typing so it's not hammering the API on every keystroke. A small status pill in the top bar — visible on every page — always shows the current state ("Synced 2m ago," "Syncing…," "not connected," or a failure warning you can hover for details); click it to jump to Settings. Manual **Sync now** and **Restore from Drive** buttons are also there for immediate control or pulling your data onto a different device. It only ever touches a file it creates itself, inside a "CA Study" folder — never the rest of your Drive. Note: this needs the app to be hosted (http/https), not just opened as a local file — Google's sign-in won't work otherwise.
+- **Google Drive Sync**: an alternative (or addition) to manual export/import — keeps your data automatically backed up to your own Google Drive, **PDFs included** (each one as its own file in your Drive folder, not squeezed into the JSON). A Client ID is already built in, so just click **Connect Google Drive** and approve the one-time consent screen (that single click is unavoidable — Google requires it). After that, it stays connected automatically on every future visit and syncs near-real-time: any change pushes within seconds, with light throttling during rapid typing so it's not hammering the API on every keystroke. A small status pill in the top bar — visible on every page — always shows the current state ("Synced 2m ago," "Syncing…," "not connected," or a failure warning you can hover for details); click it to jump to Settings. Manual **Sync now** and **Restore from Drive** buttons are also there for immediate control or pulling your data onto a different device. It only ever touches files it creates itself, inside a "CA Study" folder — never the rest of your Drive. Note: this needs the app to be hosted (http/https), not just opened as a local file — Google's sign-in won't work otherwise.
+  - **If a PDF you uploaded didn't show up after reopening on another device**: this was a real, significant bug, now properly fixed. PDFs previously weren't included in Drive sync at all — only their titles made it across, never the actual file. Each PDF now uploads as its own file in your Drive folder the first time it syncs, and downloads automatically on any other device that has the listing but not yet the file itself, verified byte-for-byte. This covers PDFs in Trash too, even one trashed on its very first sync before another device ever saw it live.
   - **If you've ever had content disappear after syncing**: this was a real bug, now fixed. If you have the app open in more than one place at once — the installed app plus a regular browser tab is the easy way this happens without realizing it — each one used to push its own copy straight over whatever was on Drive, with no check for whether the other one had added something newer first. Every sync now pulls Drive's current content in first and merges it, so a sync can only add to what's there, never erase it, regardless of which tab or device syncs last.
-  - **If a deleted highlight, underline, sticky note, or anything else ever came back on its own a moment after you deleted it**: this was the direct cost of the fix above, and it's fixed too. That "pull before push" behavior had no way to tell Drive about a deletion, so the very next sync would just pull the old copy back down and undo it. Deletions now leave a record behind (invisibly, not something you manage) that every future sync checks first, so something you delete stays deleted — synced or not, no matter how many tabs or devices are involved.
+  - **If a deleted highlight, underline, sticky note, or anything else ever came back on its own a moment after you deleted it**: this was the direct cost of the fix above, and it's fixed too — and this now correctly removes the item everywhere it's synced, not just on the device you deleted it from. That "pull before push" behavior had no way to tell Drive about a deletion, so the very next sync would just pull the old copy back down and undo it. Deletions now leave a record behind (invisibly, not something you manage) that every future sync checks first, so something you delete stays deleted — synced or not, no matter how many tabs or devices are involved.
   - **If a PDF ever jumped back to page 1 while you were reading or annotating it**: that was a side effect of the fix above, caught and fixed in the same round. Background syncs fire automatically after almost any edit, and the merge step was forcing the whole screen to redraw — including, if you happened to be on a PDF, resetting it to page 1. Background syncs are now silent about it; only the explicit "Restore from Drive" button (where you're deliberately asking to see new data) still refreshes the screen right away.
+  - **If your storage ever failed to open at all** (some private/incognito modes block it, or storage is full): you'll now see a plain explanation of what happened and what to try, instead of a blank page with no clue why.
 
 ---
 
@@ -254,7 +279,11 @@ Sidebar → Settings:
 |---|---|
 | `Ctrl/Cmd + K` | Open search / command palette |
 | `Ctrl/Cmd + N` | New note |
-| `Esc` | Close any open modal or search popup, or exit Focus Mode |
+| `Ctrl/Cmd + J` | Quick Capture — jot a stray thought from anywhere, file it into a topic later (§7a) |
+| `?` | Show this shortcuts list in-app (ignored while you're typing, so it doesn't interfere with typing a literal "?") |
+| `Esc` | Close whatever's open — a modal, the command palette, Quick Capture, an expanded PDF margin note, or exit Focus Mode |
+
+All of these work from anywhere in the app, including while a PDF is open. There's also a **"?" button in the top bar** if you'd rather click than remember the key.
 
 (Formatting shortcuts like Ctrl/Cmd+B for bold work naturally inside the note editor via the browser's own text-editing behavior.)
 

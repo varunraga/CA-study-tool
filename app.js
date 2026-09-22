@@ -72,6 +72,10 @@ const ICONS = {
   flame: '<path d="M12 3s3 3 3 6.5A3 3 0 0 1 9 9.5C9 12 6 13 6 16a6 6 0 0 0 12 0c0-4-2-5-2-8 0 0-1 2-2 2s1-4-2-7z"/>',
   download: '<path d="M12 4v11"/><polyline points="7.5 11 12 15.5 16.5 11"/><path d="M5 18.5h14"/>',
   edit: '<path d="M14.5 5.5 18.5 9.5"/><path d="M4 20l.8-4L16 4.8a1.6 1.6 0 0 1 2.3 0l.9.9a1.6 1.6 0 0 1 0 2.3L8 19.2z"/>',
+  collapse: '<polyline points="4 9 9 9 9 4"/><polyline points="20 9 15 9 15 4"/><polyline points="4 15 9 15 9 20"/><polyline points="20 15 15 15 15 20"/>',
+  palette: '<path d="M12 3a9 9 0 1 0 0 18c1.5 0 2-1 2-2s-.5-1.5-.5-2.5c0-1 .8-1.5 2-1.5h2a3 3 0 0 0 3-3c0-5-4-9-8.5-9z"/><circle cx="7.5" cy="10.5" r="1" fill="currentColor" stroke="none"/><circle cx="10.5" cy="7" r="1" fill="currentColor" stroke="none"/><circle cx="15" cy="8" r="1" fill="currentColor" stroke="none"/><circle cx="17" cy="12" r="1" fill="currentColor" stroke="none"/>',
+  clipboard: '<rect x="6" y="4" width="12" height="17" rx="2"/><rect x="9" y="2.5" width="6" height="3" rx="1"/><line x1="8.5" y1="10" x2="15.5" y2="10"/><line x1="8.5" y1="13.5" x2="15.5" y2="13.5"/><line x1="8.5" y1="17" x2="13" y2="17"/>',
+  pin: '<path d="M12 21s7-7.5 7-12a7 7 0 0 0-14 0c0 4.5 7 12 7 12z"/><circle cx="12" cy="9" r="2.3"/>',
 };
 function icon(name, size) {
   const s = size || 16;
@@ -781,7 +785,7 @@ const SubjectsHub = {
     const subjects = (Cache.subjects || []).filter(s => s.courseId === c.id).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     return `<div style="margin-bottom:34px;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
-        <h3 style="margin:0;">📘 ${esc(c.name)}</h3>
+        <h3 style="margin:0;">${icon('book')} ${esc(c.name)}</h3>
         <div class="note-meta-row" style="margin:0;">
           <button class="btn sm secondary" onclick="Courses.promptNewSubject('${c.id}')" title="Add a subject to this course">+ Subject</button>
           <button class="btn sm secondary" onclick="Courses.deleteCourse('${c.id}')" title="Delete this whole course">Delete course</button>
@@ -838,7 +842,7 @@ const SubjectsHub = {
         </div>
         <div class="note-meta-row" style="margin-top:16px;">
           <button class="btn sm" onclick="Courses.promptNewChapter('${s.id}')" title="Add a chapter to this subject">+ Chapter</button>
-          <button class="btn sm secondary" onclick="Courses.editSubjectColor('${s.id}')" title="Change this subject's color">🎨 Color</button>
+          <button class="btn sm secondary" onclick="Courses.editSubjectColor('${s.id}')" title="Change this subject's color">${icon('palette')} Color</button>
           <button class="btn sm secondary" onclick="Courses.deleteSubject('${s.id}')" title="Delete this subject">Delete subject</button>
         </div>
       </div>
@@ -1129,7 +1133,7 @@ const Notes = {
           <div class="sep"></div>
           <button onclick="Notes.insertTable('${id}')" title="Insert a 2×2 table">▦ Table</button>
           <button onclick="Notes.insertLink()" title="Turn selected text into a link"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.5 14.5 14.5 9.5"/><path d="M11 6.5 12.6 4.9a3.5 3.5 0 0 1 5 5L16 11.5"/><path d="M13 17.5 11.4 19.1a3.5 3.5 0 0 1-5-5L8 12.5"/></svg> Link</button>
-          <button onclick="Notes.promptTemplate('${id}')" title="Insert a ready-made structure — case law summary, amendment tracker, or rates table">📋 Template</button>
+          <button onclick="Notes.promptTemplate('${id}')" title="Insert a ready-made structure — case law summary, amendment tracker, or rates table">${icon('clipboard')} Template</button>
           <div class="sep"></div>
           <button onclick="Focus.enter()" title="Focus Mode — hide the sidebar and menus for distraction-free writing (Esc to exit)">🕶 Focus</button>
         </div>
@@ -1391,7 +1395,7 @@ const Notes = {
     bar.id = 'selToolbar'; bar.className = 'sel-toolbar';
     bar.style.top = (rect.top + window.scrollY - 40) + 'px';
     bar.style.left = (rect.left + window.scrollX) + 'px';
-    bar.innerHTML = colors.map(c => `<button title="${esc(c.label)}" onmousedown="event.preventDefault();Notes.highlight('${c.key}')">${['🟡','🟢','🔵','🔴','🟣','🟠'][colors.indexOf(c)] || '●'}</button>`).join('')
+    bar.innerHTML = colors.map(c => `<button class="sel-swatch" style="background:${c.color}" title="${esc(c.label)}" onmousedown="event.preventDefault();Notes.highlight('${c.key}')" ontouchstart="event.preventDefault();Notes.highlight('${c.key}')"></button>`).join('')
       + `<button onmousedown="event.preventDefault();Notes.annotate('${noteId}')"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5.5h16v11H9l-4 3.5v-3.5H4z"/></svg> Note</button>`;
     document.body.appendChild(bar);
   },
@@ -1925,12 +1929,12 @@ const Pdfs = {
         <button class="icon-btn" onclick="Pdfs.zoom(-0.15)" title="Zoom out" aria-label="Zoom out">−</button>
         <button class="icon-btn" onclick="Pdfs.zoom(0.15)" title="Zoom in" aria-label="Zoom in">+</button>
         <button class="icon-btn" onclick="Pdfs.toggleSearchBar()" title="Find text anywhere in this PDF"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><line x1="20" y1="20" x2="15.3" y2="15.3"/></svg> Find</button>
-        <button class="icon-btn" id="pdfReadModeBtn" onclick="Pdfs.toggleReadMode()" title="${pdfReadMode ? 'Exit whole-screen reading view and return to the full editor' : 'Switch to a distraction-free, whole-screen reading view with just the essentials'}">${pdfReadMode ? '⛶ Exit Full Screen' : '⛶ Full Screen'}</button>
+        <button class="icon-btn" id="pdfReadModeBtn" onclick="Pdfs.toggleReadMode()" title="${pdfReadMode ? 'Exit whole-screen reading view and return to the full editor' : 'Switch to a distraction-free, whole-screen reading view with just the essentials'}">${pdfReadMode ? icon('collapse') + ' Exit Full Screen' : icon('expand') + ' Full Screen'}</button>
         <button class="icon-btn pdf-edit-only" id="pdfUndoBtn" onclick="Pdfs.undo()" title="Undo the last highlight, underline, sticky note or drawing" disabled><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10h9a5.5 5.5 0 0 1 0 11h-2"/><polyline points="8 5 4 10 8 15"/></svg> Undo</button>
         <button class="icon-btn pdf-edit-only" id="pdfRedoBtn" onclick="Pdfs.redo()" title="Redo" disabled><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 10h-9a5.5 5.5 0 0 0 0 11h2"/><polyline points="16 5 20 10 16 15"/></svg> Redo</button>
         <button class="icon-btn pdf-edit-only" onclick="Pdfs.bookmarkPage('${id}')" title="Bookmark this page for quick return"><svg class="ico" style="color:#D9707A" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h12v18l-6-4.5L6 21z"/></svg> Bookmark page</button>
         <button class="icon-btn pdf-edit-only" onclick="Pdfs.promptExtractPages('${id}')" title="Split a page range out of this PDF into a new standalone PDF"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="6" r="2.3"/><circle cx="6" cy="18" r="2.3"/><line x1="20" y1="4" x2="7.6" y2="14.5"/><line x1="20" y1="20" x2="7.6" y2="9.5"/></svg> Extract Pages</button>
-        <button class="icon-btn" id="stickyBtn" onclick="Pdfs.toggleStickyMode()" title="Click a spot on the page to drop a sticky note there">📌 Sticky note</button>
+        <button class="icon-btn" id="stickyBtn" onclick="Pdfs.toggleStickyMode()" title="Click a spot on the page to drop a sticky note there">${icon('pin')} Sticky note</button>
         <button class="icon-btn pdf-edit-only" id="drawBtn" onclick="Pdfs.toggleDrawMode()" title="Draw freehand ink, an arrow, or a rectangle on this page"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 5.5 18.5 9.5"/><path d="M4 20l.8-4L16 4.8a1.6 1.6 0 0 1 2.3 0l.9.9a1.6 1.6 0 0 1 0 2.3L8 19.2z"/></svg> Draw</button>
         <button class="icon-btn pdf-edit-only" id="splitBtn" onclick="Pdfs.toggleSplit()" title="Dock a note editor beside the PDF, for taking notes while you read"><svg class="ico" style="color:#5B9BE0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="16.5" x2="15" y2="16.5"/></svg> Split with Notes</button>
         <button class="icon-btn pdf-edit-only" onclick="Pdfs.exportAnnotatedPdf()" title="Download a copy of this PDF with all highlights, underlines and drawings permanently burned in — the original stays untouched"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><polyline points="7.5 11 12 15.5 16.5 11"/><path d="M5 18.5h14"/></svg> Export PDF</button>
@@ -1982,7 +1986,7 @@ const Pdfs = {
     if (shell) shell.classList.toggle('pdf-readmode', pdfReadMode);
     const btn = document.getElementById('pdfReadModeBtn');
     if (btn) {
-      btn.textContent = pdfReadMode ? '⛶ Exit Full Screen' : '⛶ Full Screen';
+      btn.innerHTML = pdfReadMode ? icon('collapse') + ' Exit Full Screen' : icon('expand') + ' Full Screen';
       btn.title = pdfReadMode ? 'Exit whole-screen reading view and return to the full editor' : 'Switch to a distraction-free, whole-screen reading view with just the essentials';
     }
   },
@@ -2746,11 +2750,11 @@ const Pdfs = {
       <h4 style="font-size:12px;text-transform:uppercase;color:var(--text-dim);">This page</h4>
       ${pageAnnots.length ? pageAnnots.map(a => {
       const isDrawing = ['ink', 'arrow', 'rect'].includes(a.kind);
-      const icon = a.kind === 'sticky' ? '<svg class="ico" style="color:#5B9BE0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="16.5" x2="15" y2="16.5"/></svg>' : a.kind === 'underline' ? '‾' : a.kind === 'ink' ? '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 5.5 18.5 9.5"/><path d="M4 20l.8-4L16 4.8a1.6 1.6 0 0 1 2.3 0l.9.9a1.6 1.6 0 0 1 0 2.3L8 19.2z"/></svg>' : a.kind === 'arrow' ? '↗' : a.kind === 'rect' ? '▭' : '🖍';
+      const iconHtml = a.kind === 'sticky' ? '<svg class="ico" style="color:#5B9BE0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="16.5" x2="15" y2="16.5"/></svg>' : a.kind === 'underline' ? '‾' : a.kind === 'ink' ? '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 5.5 18.5 9.5"/><path d="M4 20l.8-4L16 4.8a1.6 1.6 0 0 1 2.3 0l.9.9a1.6 1.6 0 0 1 0 2.3L8 19.2z"/></svg>' : a.kind === 'arrow' ? '↗' : a.kind === 'rect' ? '▭' : icon('edit');
       const label = isDrawing ? (a.kind.charAt(0).toUpperCase() + a.kind.slice(1) + ' drawing') : (a.comment || a.text || '');
       const openHandler = a.kind === 'sticky' ? `Pdfs.openSticky('${a.id}')` : isDrawing ? '' : `Pdfs.openHighlight('${a.id}')`;
       return `<div style="display:flex;align-items:center;gap:4px;">
-        <span class="subtle" style="flex:1;padding:4px 0;${openHandler ? 'cursor:pointer;' : ''}" ${openHandler ? `onclick="${openHandler}" title="Click to view, edit, or delete"` : ''}>${icon} ${esc(label.slice(0, 42))}</span>
+        <span class="subtle" style="flex:1;padding:4px 0;${openHandler ? 'cursor:pointer;' : ''}" ${openHandler ? `onclick="${openHandler}" title="Click to view, edit, or delete"` : ''}>${iconHtml} ${esc(label.slice(0, 42))}</span>
         <span class="del-mini" onclick="Pdfs.quickDeleteAnnotation('${a.id}')" title="Delete this ${isDrawing ? 'drawing' : a.kind === 'sticky' ? 'sticky note' : a.kind}"><svg class="ico" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></span>
       </div>`;
     }).join('') : '<div class="subtle">None on this page yet.</div>'}
@@ -2822,6 +2826,7 @@ const Pdfs = {
 /* Static command list for the palette — actions, not content. Dynamic
    "Go to subject" commands are appended at search time from Cache.subjects. */
 const Commands = [
+  { label: 'Keyboard Shortcuts', icon: icon('helpCircle'), kind: 'Action', run: () => { CmdK.close(); showShortcutsHelp(); } },
   { label: 'Quick Capture (jot it down)', icon: '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12h4l2 3h4l2-3h4"/><path d="M4 12 5.5 5a1 1 0 0 1 1-.8h11a1 1 0 0 1 1 .8L20 12v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/></svg>', kind: 'Create', run: () => { CmdK.close(); QuickCapture.open(); } },
   { label: 'Open Inbox', icon: '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12h4l2 3h4l2-3h4"/><path d="M4 12 5.5 5a1 1 0 0 1 1-.8h11a1 1 0 0 1 1 .8L20 12v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/></svg>', kind: 'Go to', run: () => { CmdK.close(); UI.nav('inbox'); } },
   { label: 'New Note', icon: '<svg class="ico" style="color:#5B9BE0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="16.5" x2="15" y2="16.5"/></svg>', kind: 'Create', run: () => { CmdK.close(); Notes.promptNew(); } },
@@ -2833,7 +2838,7 @@ const Commands = [
   { label: 'Start Revision', icon: '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10a8 8 0 0 1 14-4.9M20 5v5h-5"/><path d="M20 14a8 8 0 0 1-14 4.9M4 19v-5h5"/></svg>', kind: 'Go to', run: () => { CmdK.close(); UI.nav('revision'); } },
   { label: 'Exam Mode', icon: '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 9.5 12 5l10 4.5-10 4.5z"/><path d="M6 12v5c0 1 2.7 2.5 6 2.5s6-1.5 6-2.5v-5"/><path d="M22 9.5v5.5"/></svg>', kind: 'Go to', run: () => { CmdK.close(); UI.nav('exam'); } },
   { label: 'Last-Minute Revision', icon: '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="13 2 4 14 11 14 10 22 20 10 13 10"/></svg>', kind: 'Go to', run: () => { CmdK.close(); UI.nav('lmr'); } },
-  { label: 'Focus Mode / Study Timer', icon: '⏱', kind: 'Go to', run: () => { CmdK.close(); UI.nav('focus'); } },
+  { label: 'Focus Mode / Study Timer', icon: icon('clock'), kind: 'Go to', run: () => { CmdK.close(); UI.nav('focus'); } },
   { label: 'Open Dashboard', icon: '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11.5 12 4l8 7.5"/><path d="M6 10v9a1 1 0 0 0 1 1h3v-6h4v6h3a1 1 0 0 0 1-1v-9"/></svg>', kind: 'Go to', run: () => { CmdK.close(); UI.nav('dashboard'); } },
   { label: 'Open Search & Filters', icon: '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><line x1="20" y1="20" x2="15.3" y2="15.3"/></svg>', kind: 'Go to', run: () => { CmdK.close(); UI.nav('search'); } },
   { label: 'Open Analytics', icon: '<svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="5" y1="20" x2="5" y2="12"/><line x1="12" y1="20" x2="12" y2="7"/><line x1="19" y1="20" x2="19" y2="15"/><line x1="3" y1="20" x2="21" y2="20"/></svg>', kind: 'Go to', run: () => { CmdK.close(); UI.nav('analytics'); } },
@@ -2866,7 +2871,7 @@ const CmdK = {
   close() { const b = document.getElementById('cmdkBackdrop'); if (b) b.remove(); },
   allCommands() {
     const dynamic = (Cache.subjects || []).map(s => ({
-      label: 'Go to subject: ' + s.name, icon: '📘', kind: 'Go to',
+      label: 'Go to subject: ' + s.name, icon: icon('book'), kind: 'Go to',
       run: () => {
         CmdK.close();
         SubjectsHub.view = 'subject'; SubjectsHub.subjectId = s.id; SubjectsHub.chapterId = null;
@@ -3265,7 +3270,7 @@ const ExamMode = {
         <div class="card"><div class="subtle">Correct</div><h2 style="margin:6px 0;">${correct}</h2></div>
         <div class="card"><div class="subtle">Needs work</div><h2 style="margin:6px 0;">${needsWork}</h2></div>
       </div>
-      ${this.results.map(r => `<div class="list-row"><span>${r.verdict === 'correct' ? '<svg class="ico" style="color:#4FAE71" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><polyline points="7.5 12.5 10.5 15.5 16.5 8.5"/></svg>' : r.verdict === 'partial' ? '🟡' : '🔴'}</span><div style="flex:1;">${esc(r.questionText)}</div><span class="pill">${r.marks} marks</span></div>`).join('')}
+      ${this.results.map(r => `<div class="list-row"><span>${r.verdict === 'correct' ? '<svg class="ico" style="color:#4FAE71" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><polyline points="7.5 12.5 10.5 15.5 16.5 8.5"/></svg>' : r.verdict === 'partial' ? '<svg class="ico" style="color:#D89A3F" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><line x1="8" y1="12" x2="16" y2="12"/></svg>' : '<svg class="ico" style="color:#D9645A" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><line x1="9" y1="9" x2="15" y2="15"/><line x1="15" y1="9" x2="9" y2="15"/></svg>'}</span><div style="flex:1;">${esc(r.questionText)}</div><span class="pill">${r.marks} marks</span></div>`).join('')}
       <button class="btn" style="margin-top:16px;" onclick="ExamMode.reset()" title="Return to the exam setup screen">Start another exam</button>`;
   },
   reset() { this.state = 'setup'; this.queue = []; this.index = 0; this.results = []; Router.render(); }
@@ -3696,6 +3701,7 @@ const BackupService = {
             ? { ...obj, data: { ...obj.data, blob: existingTrash.data.blob } }
             : obj;
           await DB.put('trash', toPut);
+          pdfsTouched = true; // downloadMissingPdfBlobs() also checks Trash, but only runs when this is set
         } else {
           await DB.put(s, obj);
         }
@@ -4079,6 +4085,22 @@ const DriveSync = {
         console.warn('Failed to upload PDF to Drive:', full.title, e);
       }
     }
+    // A PDF trashed before it ever got a chance to sync its live copy
+    // elsewhere would otherwise have no binary anywhere but the device that
+    // trashed it — back it up too, so restoring it stays possible on
+    // another device, not just the one it was deleted on.
+    for (const t of (Cache.trash || [])) {
+      if (t.type !== 'pdfs' || !t.data || t.data.driveFileId || !t.data.blob) continue;
+      try {
+        const driveFileId = await this.uploadPdfBlob(t.data, folderId);
+        const updatedEntry = { ...t, data: { ...t.data, driveFileId } };
+        await DB.put('trash', updatedEntry);
+        const i = Cache.trash.findIndex(x => x.id === t.id);
+        if (i >= 0) Cache.trash[i] = updatedEntry;
+      } catch (e) {
+        console.warn('Failed to upload trashed PDF to Drive:', t.data.title, e);
+      }
+    }
   },
   async uploadPdfBlob(pdfRecord, folderId) {
     const boundary = 'castudy-' + uid();
@@ -4114,6 +4136,23 @@ const DriveSync = {
         any = true;
       } catch (e) {
         console.warn('Failed to download PDF from Drive:', meta.title, e);
+      }
+    }
+    // Same for trashed PDFs: a device that only ever received the trash
+    // listing (not the live PDF) needs this too, so "Restore" from Trash
+    // actually brings back real content instead of an empty shell.
+    for (const t of (Cache.trash || [])) {
+      if (t.type !== 'pdfs' || !t.data || !t.data.driveFileId || t.data.blob) continue;
+      try {
+        const res = await this.driveFetch(`https://www.googleapis.com/drive/v3/files/${t.data.driveFileId}?alt=media`);
+        const buf = await res.arrayBuffer();
+        const updatedEntry = { ...t, data: { ...t.data, blob: new Uint8Array(buf) } };
+        await DB.put('trash', updatedEntry);
+        const i = Cache.trash.findIndex(x => x.id === t.id);
+        if (i >= 0) Cache.trash[i] = updatedEntry;
+        any = true;
+      } catch (e) {
+        console.warn('Failed to download trashed PDF from Drive:', t.data.title, e);
       }
     }
     if (any) {
@@ -4361,7 +4400,7 @@ const Dashboard = {
     const progress = subjectProgress();
     if (!Cache.courses.length) {
       return `<div class="empty-state">
-        <div style="font-size:38px;">📘</div>
+        <div style="margin-bottom:6px;">${icon('book', 44)}</div>
         <h3>Welcome — let's set up your syllabus</h3>
         <p class="subtle" style="max-width:420px;margin:0 auto 18px;">Organize everything as Course → Subject → Chapter → Topic. You can start from scratch, or load a small worked example first to see how notes, mnemonics, questions, and flashcards all fit together.</p>
         <div class="note-meta-row" style="justify-content:center;">
@@ -4684,6 +4723,7 @@ document.addEventListener('keydown', (e) => {
   else if (mod && e.key.toLowerCase() === 'n') { e.preventDefault(); Notes.promptNew(); }
   else if (mod && e.key.toLowerCase() === 'j') { e.preventDefault(); QuickCapture.open(); }
   else if (e.key === 'Escape') { CmdK.close(); QuickCapture.close(); Modal.close(); Pdfs.closeAllMarginNotes(); if (Focus.active) Focus.exit(); }
+  else if (e.key === '?' && !mod && !['INPUT', 'TEXTAREA'].includes(e.target.tagName) && !e.target.isContentEditable) { e.preventDefault(); showShortcutsHelp(); }
 });
 // The moment the tab is backgrounded, closed, or the OS is about to suspend
 // it, force any pending debounced note/title save to run right now instead
@@ -4705,9 +4745,56 @@ document.addEventListener('click', (e) => {
 window.addEventListener('pagehide', flushPendingSaves);
 
 /* ============================== BOOT ============================== */
+// Renders a plain, dependency-free error screen directly into the page —
+// used when boot() fails before the normal app UI (which depends on the
+// data that just failed to load) can render anything at all. Kept as raw
+// DOM/string building rather than any of the app's own render helpers,
+// since those can't be trusted to work if we got here.
+function showShortcutsHelp() {
+  const rows = [
+    ['Ctrl / Cmd + K', 'Command palette — jump anywhere or run any action'],
+    ['Ctrl / Cmd + N', 'New note'],
+    ['Ctrl / Cmd + J', 'Quick Capture — jot a stray thought from anywhere, file it into a topic later'],
+    ['Esc', 'Close whatever\'s open — a dialog, the command palette, Quick Capture, an expanded PDF note'],
+    ['?', 'Show this list'],
+  ];
+  Modal.open('Keyboard Shortcuts', `
+    <div class="shortcuts-list">${rows.map(([k, d]) => `<div class="shortcut-row">${k.split(' + ').map(p => `<kbd>${esc(p)}</kbd>`).join('<span class="subtle">+</span>')}<span>${esc(d)}</span></div>`).join('')}</div>
+    <p class="subtle" style="margin-top:12px;">These work from anywhere in the app, including while a PDF is open — Esc even closes an expanded margin note without losing your place.</p>`);
+}
+function showBootError(title, message, steps) {
+  const app = document.getElementById('app') || document.body;
+  app.innerHTML = `<div style="max-width:460px;margin:15vh auto 0;padding:0 24px;text-align:center;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#EDEAE2;">
+    <div style="font-size:38px;margin-bottom:10px;">⚠️</div>
+    <h2 style="margin:0 0 10px;">${esc(title)}</h2>
+    <p style="color:#9B9587;line-height:1.5;">${esc(message)}</p>
+    <ul style="text-align:left;color:#9B9587;line-height:1.6;">${(steps || []).map(s => `<li>${esc(s)}</li>`).join('')}</ul>
+    <button onclick="window.location.reload()" style="margin-top:14px;padding:10px 18px;border-radius:10px;border:none;background:#D9B24C;color:#241B05;font-weight:600;cursor:pointer;">Reload</button>
+  </div>`;
+}
 async function boot() {
-  await DB.open();
-  await loadAllToCache();
+  try {
+    await DB.open();
+  } catch (e) {
+    console.error('Failed to open local storage', e);
+    showBootError(
+      'Couldn\'t open local storage',
+      'This app stores everything in your browser\'s built-in database, and it just failed to open. This usually happens in a private/incognito window (some browsers block it there), when the browser\'s storage is full, or with certain strict privacy settings.',
+      ['Try opening this in a normal (non-private) window', 'Free up some storage space on your device', 'Try a different browser', 'If you\'re using strict tracking/cookie-blocking settings, try allowing storage for this site']
+    );
+    return;
+  }
+  try {
+    await loadAllToCache();
+  } catch (e) {
+    console.error('Failed to load data from storage', e);
+    showBootError(
+      'Couldn\'t load your data',
+      'Local storage opened, but reading your saved data failed. Your data is very likely still there — this may be a one-off glitch.',
+      ['Try reloading the page', 'If it keeps happening, check Settings → Export backup from an earlier working session, or get in touch with whoever built this for you']
+    );
+    return;
+  }
   STORES.forEach(s => Cache[s] = Cache[s] || []);
   Theme.apply();
   Tree.render();
@@ -4738,4 +4825,7 @@ async function boot() {
     setTimeout(() => DriveSync.init(), 1500);
   }
 }
-boot();
+boot().catch((e) => {
+  console.error('Unexpected error during startup', e);
+  showBootError('Something went wrong starting up', 'An unexpected error happened while loading the app. Reloading usually fixes this — if it keeps happening, your data is still safe in local storage regardless.', []);
+});

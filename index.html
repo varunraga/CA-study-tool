@@ -189,6 +189,10 @@ textarea{resize:vertical;}
 .sel-toolbar button{background:none;border:none;color:inherit;padding:5px 8px;font-size:12px;border-radius:6px;}
 .sel-toolbar button:hover{background:var(--accent-soft);}
 .sel-toolbar button.sel-swatch{width:22px;height:22px;padding:0;border-radius:50%;border:2px solid rgba(255,255,255,.55);}
+.shortcuts-list{display:flex;flex-direction:column;gap:11px;}
+.shortcut-row{display:flex;align-items:center;gap:6px;}
+.shortcut-row kbd{background:var(--bg-elev-2);border:1px solid var(--border);border-radius:5px;padding:2px 7px;font-family:var(--mono);font-size:12px;box-shadow:0 1px 0 var(--border);white-space:nowrap;}
+.shortcut-row span:not(.subtle){color:var(--text-dim);font-size:13.5px;flex:1;margin-left:6px;}
 .pdf-textlayer{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default;}
 .pdf-textlayer span{-webkit-user-select:text;user-select:text;}
 
@@ -359,6 +363,7 @@ body.focus-mode .content { max-width: 780px; margin: 0 auto; padding-top: 50px; 
       <div class="spacer"></div>
       <span id="driveStatusBadge" class="pill" style="display:none;cursor:pointer;" onclick="UI.nav('settings')" title="Google Drive sync status — click to manage in Settings"></span>
       <button class="icon-btn" onclick="UI.newQuick()" title="Quick add — create a note, PDF, mnemonic, jargon or question" aria-label="Quick add"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+      <button class="icon-btn" onclick="showShortcutsHelp()" title="Keyboard shortcuts (or press ?)" aria-label="Keyboard shortcuts"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.2a2.5 2.5 0 1 1 3.7 2.3c-.9.5-1.2 1-1.2 2"/><line x1="12" y1="17" x2="12" y2="17.1"/></svg></button>
       <button class="icon-btn" onclick="Theme.toggle()" title="Switch between light and dark mode" aria-label="Toggle dark mode"><svg class="ico" style="color:#E8C874" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5z"/></svg></button>
     </div>
     <div class="content" id="content"></div>
