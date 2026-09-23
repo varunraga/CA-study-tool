@@ -73,6 +73,15 @@ body.pdf-fullwidth .topbar{display:none;}
 .del-mini:hover{opacity:1;color:var(--danger);background:var(--danger-soft);}
 .move-mini{opacity:.4;font-size:11px;color:var(--text-dim);padding:2px 5px;border-radius:5px;transition:opacity .12s ease;line-height:1;}
 .move-mini:hover{opacity:1;color:var(--accent);background:var(--accent-soft);}
+/* On touch devices (not just narrow windows — pointer:coarse targets the
+   actual input type) these small reorder/delete controls and compact
+   buttons are genuinely fiddly to tap precisely. Give them a larger tap
+   area via padding rather than changing their visual size, so the
+   compact desktop look is untouched. */
+@media (pointer:coarse){
+  .del-mini,.move-mini{min-width:34px;min-height:34px;display:inline-flex;align-items:center;justify-content:center;opacity:.55;}
+  .btn.sm{min-height:36px;padding:9px 15px;}
+}
 .move-mini:disabled{opacity:.12;cursor:default;}
 .move-mini:disabled:hover{color:var(--text-dim);background:none;}
 
