@@ -1138,7 +1138,7 @@ const Notes = {
           <button onclick="Focus.enter()" title="Focus Mode — hide the sidebar and menus for distraction-free writing (Esc to exit)">🕶 Focus</button>
         </div>
         <div class="editor-body" id="editorBody" contenteditable="true" aria-label="Note content"
-             oninput="Notes.onEdit('${id}')" onmouseup="Notes.onSelect(event,'${id}')" onkeyup="Notes.onSelect(event,'${id}')" onpaste="Notes.handlePaste(event,'${id}')">${note.content}</div>
+             oninput="Notes.onEdit('${id}')" onmouseup="Notes.onSelect(event,'${id}')" onkeyup="Notes.onSelect(event,'${id}')" ontouchend="Notes.onSelect(event,'${id}')" onpaste="Notes.handlePaste(event,'${id}')">${note.content}</div>
         <div class="save-status" id="saveStatus">Saved</div>
       </div>
       <div class="inspector">
@@ -1384,43 +1384,67 @@ const Notes = {
     const url = prompt('URL?'); if (url) document.execCommand('createLink', false, url);
   },
   onSelect(e, noteId) {
+    // Desktop mouseup/keyup path, and the instant touchend path — fires
+    // immediately when it fires reliably. The selectionchange-debounce
+    // listener below is what makes this reliable on mobile/iPad too, where
+    // finishing a selection means dragging native OS handles that don't
+    // reliably fire mouseup/touchend on the underlying element.
     const sel = window.getSelection();
-    const existing = document.getElementById('selToolbar');
-    if (existing) existing.remove();
-    if (!sel || sel.isCollapsed || !sel.toString().trim()) return;
-    const range = sel.getRangeAt(0);
+    const editor = document.getElementById('editorBody');
+    if (!sel || sel.isCollapsed || !sel.toString().trim() || !editor || !editor.contains(sel.anchorNode)) {
+      document.getElementById('selToolbar')?.remove();
+      return;
+    }
+    Notes.showSelectionToolbar(sel.getRangeAt(0), noteId);
+  },
+  // Builds the toolbar and — critically — captures the range/text right now
+  // rather than leaving highlight()/annotate() to re-read window.getSelection()
+  // later when a button is tapped. On mobile, tapping a toolbar button is a
+  // new touch elsewhere on the screen, which is exactly the gesture that can
+  // make the OS clear the current selection, sometimes before our own tap
+  // handler even runs.
+  showSelectionToolbar(range, noteId) {
+    const text = (window.getSelection()?.toString() || '');
+    Notes._pendingSelection = { text, range: range.cloneRange() };
+    document.getElementById('selToolbar')?.remove();
     const rect = range.getBoundingClientRect();
     const colors = Settings.get('highlightColors');
     const bar = document.createElement('div');
     bar.id = 'selToolbar'; bar.className = 'sel-toolbar';
-    bar.style.top = (rect.top + window.scrollY - 40) + 'px';
+    // Below the selection, not above — the native OS selection menu
+    // (Copy/Cut/Paste/Select All) conventionally appears ABOVE the
+    // selection, so this keeps the two from sitting on top of each other.
+    bar.style.top = (rect.bottom + window.scrollY + 8) + 'px';
     bar.style.left = (rect.left + window.scrollX) + 'px';
-    bar.innerHTML = colors.map(c => `<button class="sel-swatch" style="background:${c.color}" title="${esc(c.label)}" onmousedown="event.preventDefault();Notes.highlight('${c.key}')" ontouchstart="event.preventDefault();Notes.highlight('${c.key}')"></button>`).join('')
-      + `<button onmousedown="event.preventDefault();Notes.annotate('${noteId}')"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5.5h16v11H9l-4 3.5v-3.5H4z"/></svg> Note</button>`;
+    const act = (js) => `onmousedown="event.preventDefault();${js}" ontouchstart="event.preventDefault();${js}"`;
+    bar.innerHTML = colors.map(c => `<button class="sel-swatch" style="background:${c.color}" title="${esc(c.label)}" ${act(`Notes.highlight('${c.key}')`)}></button>`).join('')
+      + `<button title="Add a comment/annotation to this selection" ${act(`Notes.annotate('${noteId}')`)}><svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5.5h16v11H9l-4 3.5v-3.5H4z"/></svg> Note</button>`;
     document.body.appendChild(bar);
   },
   highlight(colorKey) {
-    const sel = window.getSelection(); if (!sel.rangeCount) return;
-    const range = sel.getRangeAt(0);
+    const pending = Notes._pendingSelection;
+    document.getElementById('selToolbar')?.remove();
+    window.getSelection()?.removeAllRanges();
+    Notes._pendingSelection = null;
+    if (!pending) return;
+    const range = pending.range;
     const mark = document.createElement('mark'); mark.className = colorKey;
     try { range.surroundContents(mark); } catch (e) { mark.appendChild(range.extractContents()); range.insertNode(mark); }
-    sel.removeAllRanges();
-    document.getElementById('selToolbar')?.remove();
     const id = UI.params.id; Notes.onEdit(id);
   },
   annotate(noteId) {
-    const sel = window.getSelection();
-    if (!sel.rangeCount) return;
-    const range = sel.getRangeAt(0).cloneRange(); // capture now — any dialog can clear the live selection
-    const text = sel.toString();
+    const pending = Notes._pendingSelection;
     document.getElementById('selToolbar')?.remove();
+    window.getSelection()?.removeAllRanges();
+    Notes._pendingSelection = null;
+    if (!pending) return;
     Modal.open('Annotation', `
       <label>Comment / doubt / exam tip</label>
       <textarea id="mNoteAnnotComment" rows="3" placeholder="What do you want to remember about this?" title="Annotation text"></textarea>
       <div class="modal-actions"><button class="btn secondary" onclick="Modal.close()" title="Discard and close this dialog">Cancel</button>
       <button class="btn" onclick="Notes.saveAnnotation('${noteId}')" title="Save this annotation">Save</button></div>`);
-    Notes._pendingAnnotRange = range;
-    Notes._pendingAnnotText = text;
+    Notes._pendingAnnotRange = pending.range;
+    Notes._pendingAnnotText = pending.text;
     setTimeout(() => document.getElementById('mNoteAnnotComment')?.focus(), 50);
   },
   async saveAnnotation(noteId) {
@@ -2000,7 +2024,15 @@ const Pdfs = {
       const full = await DB.get('pdfs', id);
       if (!full || !full.blob) { toast('Could not find this PDF\'s content'); return; }
       pdfDocCache = await pdfjsLib.getDocument({ data: full.blob.slice(0) }).promise;
-      pdfCurrentPage = 1; pdfScale = 1.2; pdfStickyMode = false;
+      pdfCurrentPage = 1; pdfStickyMode = false;
+      // Pick an initial zoom that fits the page width to the actual screen
+      // — a fixed 1.2 scale looks right on desktop but renders noticeably
+      // wider than a phone's viewport, cutting content off on both edges.
+      const firstPage = await pdfDocCache.getPage(1);
+      const naturalWidth = firstPage.getViewport({ scale: 1 }).width;
+      const wrap = document.getElementById('pdfCanvasWrap');
+      const availableWidth = Math.max(240, (wrap?.clientWidth || window.innerWidth) - 40); // minus the wrap's own padding
+      pdfScale = Math.min(1.2, Math.max(0.4, availableWidth / naturalWidth));
       Pdfs.renderPage();
     } catch (e) { toast('Could not render PDF'); console.error(e); }
   },
@@ -2010,8 +2042,19 @@ const Pdfs = {
     pdfPageObj = page;
     const viewport = page.getViewport({ scale: pdfScale });
     const canvas = document.getElementById('pdfCanvas'); if (!canvas) return;
-    canvas.width = viewport.width; canvas.height = viewport.height;
-    await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+    // High-DPI screens (most phones/tablets) need more actual pixels than
+    // viewport.width/height to look sharp — rendering 1:1 there is exactly
+    // what "PDF looks low quality on mobile" was. The canvas's CSS size
+    // (how big it appears) stays the same; only its internal pixel buffer
+    // gets denser, then the drawing context is scaled to match.
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(viewport.width * dpr);
+    canvas.height = Math.round(viewport.height * dpr);
+    canvas.style.width = viewport.width + 'px';
+    canvas.style.height = viewport.height + 'px';
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    await page.render({ canvasContext: ctx, viewport }).promise;
     const label = document.getElementById('pdfPageLabel');
     if (label) label.textContent = `Page ${pdfCurrentPage} / ${pdfDocCache.numPages}`;
     const wrap = document.getElementById('pdfPageWrap');
@@ -2125,7 +2168,7 @@ const Pdfs = {
     const colors = Settings.get('highlightColors');
     const bar = document.createElement('div');
     bar.id = 'pdfSelToolbar'; bar.className = 'sel-toolbar';
-    bar.style.top = Math.max(4, rect.top - 44) + 'px'; // position:fixed is viewport-relative already — adding scrollY here double-counted scroll
+    bar.style.top = (rect.bottom + 8) + 'px'; // below the selection, not above — see the note editor's identical comment for why
     bar.style.left = rect.left + 'px';
     const act = (js) => `onmousedown="event.preventDefault();${js}" ontouchstart="event.preventDefault();${js}"`;
     bar.innerHTML = colors.map((c) => `<button class="sel-swatch" style="background:${c.color}" title="${esc(c.label)}" ${act(`Pdfs.saveHighlight('${c.color}','${c.key}')`)}></button>`).join('')
@@ -4688,33 +4731,44 @@ const Focus = {
    fires continuously during a drag, not just once on mouseup), so the clean
    merged-word preview tracks the selection live rather than only appearing
    after you let go of the mouse. Cheap no-op outside the PDF viewer.
-   It also drives the highlight/annotate toolbar on mobile/iPad: long-press
-   text selection there is finished by dragging native OS selection handles,
-   which doesn't reliably fire a mouseup (or any single "you're done" event)
-   on the underlying element the way a desktop mouse-drag does. selectionchange
-   is the one signal that's reliable everywhere, so once it stops firing for a
-   moment — the selection has settled — the toolbar shows itself. */
-let _pdfSelToolbarDebounce;
+   It also drives the highlight/annotate toolbar — in PDFs and in notes —
+   on mobile/iPad: long-press text selection there is finished by dragging
+   native OS selection handles, which doesn't reliably fire a mouseup (or
+   any single "you're done" event) on the underlying element the way a
+   desktop mouse-drag does. selectionchange is the one signal that's
+   reliable everywhere, so once it stops firing for a moment — the
+   selection has settled — the toolbar shows itself. */
+let _selToolbarDebounce;
 document.addEventListener('selectionchange', () => {
-  const layer = document.getElementById('pdfTextLayer');
-  if (!layer) return;
+  const pdfLayer = document.getElementById('pdfTextLayer');
+  const noteEditor = document.getElementById('editorBody');
   const sel = window.getSelection();
-  if (!sel || sel.isCollapsed || !sel.rangeCount || !layer.contains(sel.anchorNode)) {
-    Pdfs.clearSelectionPreview();
-    clearTimeout(_pdfSelToolbarDebounce);
+  const hasSel = sel && sel.rangeCount && !sel.isCollapsed;
+  const inPdf = hasSel && pdfLayer && pdfLayer.contains(sel.anchorNode);
+  const inNote = hasSel && noteEditor && noteEditor.contains(sel.anchorNode);
+  if (!inPdf && !inNote) {
+    if (pdfLayer) Pdfs.clearSelectionPreview();
+    clearTimeout(_selToolbarDebounce);
     return;
   }
-  requestAnimationFrame(() => {
-    if (!sel.rangeCount) return; // selection may have been cleared during the deferred frame
-    Pdfs.renderSelectionPreview(sel.getRangeAt(0));
-  });
-  if (pdfStickyMode) return;
-  clearTimeout(_pdfSelToolbarDebounce);
-  _pdfSelToolbarDebounce = setTimeout(() => {
+  if (inPdf) {
+    requestAnimationFrame(() => {
+      if (!sel.rangeCount) return; // selection may have been cleared during the deferred frame
+      Pdfs.renderSelectionPreview(sel.getRangeAt(0));
+    });
+    if (pdfStickyMode) return;
+  }
+  clearTimeout(_selToolbarDebounce);
+  _selToolbarDebounce = setTimeout(() => {
     const s = window.getSelection();
-    const l = document.getElementById('pdfTextLayer');
-    if (!s || s.isCollapsed || !s.rangeCount || !l || !l.contains(s.anchorNode)) return;
-    Pdfs.showSelectionToolbar(s.getRangeAt(0));
+    if (!s || s.isCollapsed || !s.rangeCount) return;
+    if (inPdf) {
+      const l = document.getElementById('pdfTextLayer');
+      if (l && l.contains(s.anchorNode)) Pdfs.showSelectionToolbar(s.getRangeAt(0));
+    } else if (inNote) {
+      const e = document.getElementById('editorBody');
+      if (e && e.contains(s.anchorNode)) Notes.showSelectionToolbar(s.getRangeAt(0), UI.params.id);
+    }
   }, 400);
 });
 document.addEventListener('keydown', (e) => {
